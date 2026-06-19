@@ -1,0 +1,37 @@
+# Lingkungan & Dependensi
+node_modules/
+venv/
+env/
+__pycache__/
+.next/
+
+# Kredensial dan Rahasia (DILARANG KERAS DI-PUSH)
+.env
+.env.local
+.env.development
+*.pem
+credentials.json
+
+# Dataset Medis (Privasi & Ukuran Besar)
+# Semua citra mammogram asli atau hasil pre-processing tidak boleh di-push
+dataset/
+data/raw/
+data/processed/
+*.dcm
+*.png
+*.jpg
+*.jpeg
+
+# File Bobot Model AI (Ukuran Besar)
+# Beban model PyTorch harus diunduh secara terpisah atau diletakkan di cloud storage
+*.pth
+*.pt
+*.onnx
+
+# Basis Data Lokal MongoDB
+data/db/
+
+# Log dan Sistem Operasi
+*.log
+.DS_Store
+Thumbs.db
