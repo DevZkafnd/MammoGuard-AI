@@ -1,6 +1,13 @@
+"use client";
+
 import FormUnggahCitra from "@/components/FormUnggahCitra";
 
 export default function HalamanUtama() {
+  const tanganiUploadBerhasil = (data: any) => {
+    console.log("Berhasil unggah:", data);
+    alert(`Citra berhasil diunggah: ${data.nama_berkas}`);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="container mx-auto">
@@ -15,12 +22,7 @@ export default function HalamanUtama() {
 
         <main className="max-w-4xl mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
-            <FormUnggahCitra 
-              onBerhasilUnggah={(data) => {
-                console.log("Berhasil unggah:", data);
-                alert(`Citra berhasil diunggah: ${data.nama_berkas}`);
-              }}
-            />
+            <FormUnggahCitra onBerhasilUnggah={tanganiUploadBerhasil} />
           </div>
 
           <div className="bg-white rounded-lg shadow-lg p-8">
