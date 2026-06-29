@@ -1,39 +1,60 @@
-"""
-Aplikasi utama FastAPI untuk MammoGuard-AI
-Sistem deteksi dini kanker payudara menggunakan analisis citra mammogram
-"""
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-aplikasi = FastAPI(
-    title="MammoGuard-AI API",
-    description="API untuk analisis citra mammogram menggunakan kecerdasan buatan",
-    version="1.0.0"
+from app.api.routes.analyses import router as analyses_router
+from app.api.routes.auth import router as auth_router
+from app.api.routes.auth_v1 import router as auth_v1_router
+from app.api.routes.doctor_portal_v1 import router as doctor_portal_v1_router
+from app.api.routes.doctors import router as doctors_router
+from app.api.routes.health import router as health_router
+from app.api.routes.models_admin import router as models_admin_router
+from app.api.routes.users import router as users_router
+from app.core.bootstrap import ensure_bootstrap_admin
+from app.core.config import settings
+from app.db.database import mongodb
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await mongodb.connect()
+    await ensure_bootstrap_admin()
+    try:
+        yield
+    finally:
+        await mongodb.disconnect()
+
+
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    description="Backend monolithic FastAPI untuk MammoGuard AI.",
+    lifespan=lifespan,
 )
 
-# Konfigurasi CORS untuk mengizinkan frontend mengakses API
-aplikasi.add_middleware(
+app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # URL frontend Next.js
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@aplikasi.get("/")
-async def halaman_utama():
-    """Endpoint utama untuk memeriksa status server"""
+@app.get("/", tags=["Root"])
+async def root() -> dict[str, str]:
     return {
-        "pesan": "Selamat datang di MammoGuard-AI API",
-        "status": "berjalan",
-        "versi": "1.0.0"
+        "name": settings.app_name,
+        "version": settings.app_version,
+        "message": "MammoGuard AI backend is running.",
     }
 
-@aplikasi.get("/kesehatan")
-async def cek_kesehatan():
-    """Endpoint untuk memeriksa kesehatan sistem"""
-    return {
-        "status": "sehat",
-        "layanan": "aktif"
-    }
+
+app.include_router(health_router, prefix=settings.api_prefix)
+app.include_router(auth_router, prefix=settings.api_prefix)
+app.include_router(users_router, prefix=settings.api_prefix)
+app.include_router(analyses_router, prefix=settings.api_prefix)
+app.include_router(doctors_router, prefix=settings.api_prefix)
+app.include_router(models_admin_router, prefix=settings.api_prefix)
+app.include_router(auth_v1_router, prefix=settings.api_prefix)
+app.include_router(doctor_portal_v1_router, prefix=settings.api_prefix)

@@ -1,34 +1,21 @@
-"""
-Konfigurasi koneksi ke MongoDB menggunakan Motor (driver asynchronous)
-"""
+from app.db.database import get_database, get_image_bucket, get_model_bucket, mongodb
 
-import os
-from motor.motor_asyncio import AsyncIOMotorClient
 
-# Konfigurasi koneksi database
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://admin_medis:password_lokal_123@localhost:27017")
-NAMA_DATABASE = os.getenv("NAMA_DATABASE", "mammoguard_db")
+async def hubungkan_database() -> None:
+    await mongodb.connect()
 
-klien_database = None
-database = None
 
-async def hubungkan_database():
-    """Membuat koneksi ke MongoDB"""
-    global klien_database, database
-    
-    klien_database = AsyncIOMotorClient(MONGODB_URL)
-    database = klien_database[NAMA_DATABASE]
-    
-    print(f"✓ Berhasil terhubung ke database: {NAMA_DATABASE}")
+async def putuskan_database() -> None:
+    await mongodb.disconnect()
 
-async def putuskan_database():
-    """Menutup koneksi ke MongoDB"""
-    global klien_database
-    
-    if klien_database:
-        klien_database.close()
-        print("✓ Koneksi database ditutup")
 
 def dapatkan_database():
-    """Mendapatkan instance database untuk digunakan di endpoint"""
-    return database
+    return get_database()
+
+
+def dapatkan_bucket_gambar():
+    return get_image_bucket()
+
+
+def dapatkan_bucket_model():
+    return get_model_bucket()
