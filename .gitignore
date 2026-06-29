@@ -38,3 +38,19 @@ data/db/
 *.log
 .DS_Store
 Thumbs.db
+
+# python backend
+backend/.venv/
+backend/venv/
+backend/env/
+backend/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/*.pyd
+
+# file ai dan storage lokal
+backend/storage/
+backend/model_cache/
+dataset/
+*.pth
+*.pt
