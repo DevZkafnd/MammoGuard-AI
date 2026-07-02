@@ -157,8 +157,8 @@ function AdminSidebar({
   ];
 
   return (
-    <aside className="flex min-h-screen w-[220px] flex-col border-r border-[#e0e6eb] bg-white shadow-sm">
-      <div className="px-5 py-6">
+    <aside className="flex h-screen w-[280px] shrink-0 flex-col border-r border-[#e0e6eb] bg-white shadow-sm">
+      <div className="px-6 py-6">
         <div className="flex items-start gap-3 rounded-[12px] px-3 py-3">
           <LogoMark />
           <div className="min-w-0">
@@ -169,25 +169,25 @@ function AdminSidebar({
           </div>
         </div>
 
-        <nav className="mt-8 space-y-2">
+        <nav className="mt-8 space-y-2.5">
           {menuItems.map((item) => (
             <button
               key={item.label}
               type="button"
-              className={`flex w-full items-center gap-3 rounded-[10px] px-4 py-3.5 text-left transition-all duration-200 ${
+              className={`flex w-full items-center gap-3 rounded-[12px] px-4 py-4 text-left transition-all duration-200 ${
                 item.active
                   ? "bg-[#f0f8f5] text-[#0a5c4f] border-l-4 border-[#0a5c4f] shadow-sm"
                   : "text-[#6a7582] hover:bg-[#f8fafc] hover:text-[#4a5562] hover:pl-5"
               }`}
             >
               <SidebarIcon active={item.active} />
-              <span className="text-[14px] font-medium leading-[1.4]">{item.label}</span>
+              <span className="text-[15px] font-medium leading-[1.4]">{item.label}</span>
             </button>
           ))}
         </nav>
       </div>
 
-      <div className="mt-auto border-t border-[#e8edf2] bg-[#f9fbfd] px-5 py-5">
+      <div className="mt-auto border-t border-[#e8edf2] bg-[#f9fbfd] px-6 py-5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#0a5c4f] to-[#0d7a68] text-[14px] font-bold text-white shadow-sm">
@@ -625,10 +625,10 @@ export default function UserManagementPage() {
   }
 
   return (
-    <main className="flex min-h-screen bg-gradient-to-br from-[#f8fbff] to-[#f0f7ff] text-[#21303d]">
+    <main className="flex h-screen overflow-hidden bg-gradient-to-br from-[#f8fbff] to-[#f0f7ff] text-[#21303d]">
       <AdminSidebar session={session} onLogout={tanganiLogout} />
 
-      <section className="min-w-0 flex-1 px-6 py-5">
+      <section className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden px-6 py-5">
         <div className="flex items-start justify-between gap-6">
           <div>
             <h1 className="text-[20px] font-bold text-[#1a2a3a]">
@@ -649,7 +649,7 @@ export default function UserManagementPage() {
           </button>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-5 shrink-0">
           <input
             value={kataKunci}
             onChange={(event) => setKataKunci(event.target.value)}
@@ -658,7 +658,7 @@ export default function UserManagementPage() {
           />
         </div>
 
-        <div className="mt-6 overflow-hidden rounded-[12px] border border-[#e0e6eb] bg-white shadow-lg">
+        <div className="mt-5 min-h-0 flex-1 overflow-hidden rounded-[12px] border border-[#e0e6eb] bg-white shadow-lg">
           <table className="w-full border-collapse">
             <thead className="bg-gradient-to-r from-[#f8fafc] to-[#f0f5f9]">
               <tr className="border-b border-[#e8edf1] text-left">
@@ -681,32 +681,32 @@ export default function UserManagementPage() {
             </thead>
             <tbody>
               {dataTersaring.map((dokter) => (
-                <tr key={dokter.id} className="border-b border-[#edf1f4] last:border-b-0 hover:bg-[#f8fafc] transition-colors duration-150">
-                  <td className="px-5 py-4 text-[14px] font-semibold text-[#2a3947]">
+                <tr key={dokter.id} className="border-b border-[#edf1f4] transition-colors duration-150 last:border-b-0 hover:bg-[#f8fafc]">
+                  <td className="px-5 py-3.5 text-[14px] font-semibold text-[#2a3947]">
                     {dokter.nama}
                   </td>
-                  <td className="px-5 py-4 text-[13px] text-[#5a6672] font-medium">
+                  <td className="px-5 py-3.5 text-[13px] font-medium text-[#5a6672]">
                     {dokter.spesialisasi}
                   </td>
-                  <td className="px-5 py-4 text-[13px] text-[#5a6672] font-medium">
+                  <td className="px-5 py-3.5 text-[13px] font-medium text-[#5a6672]">
                     {dokter.tanggalDibuat}
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-3.5">
                     <StatusBadge status={dokter.status} />
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={() => bukaEditModal(dokter)}
-                        className="rounded-[8px] border-2 border-[#93e0c2] bg-gradient-to-r from-[#effaf5] to-[#e6f7f0] px-4 py-2.5 text-[12px] font-bold text-[#0a8a59] hover:shadow-md transition-all duration-200 hover:scale-[1.03]"
+                        className="rounded-[8px] border-2 border-[#93e0c2] bg-gradient-to-r from-[#effaf5] to-[#e6f7f0] px-4 py-2 text-[12px] font-bold text-[#0a8a59] transition-all duration-200 hover:scale-[1.03] hover:shadow-md"
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => tanganiHapus(dokter.id)}
-                        className="rounded-[8px] border-2 border-[#f3d5da] bg-gradient-to-r from-[#fff1f3] to-[#ffe8eb] px-4 py-2.5 text-[12px] font-bold text-[#e06873] hover:shadow-md transition-all duration-200 hover:scale-[1.03]"
+                        className="rounded-[8px] border-2 border-[#f3d5da] bg-gradient-to-r from-[#fff1f3] to-[#ffe8eb] px-4 py-2 text-[12px] font-bold text-[#e06873] transition-all duration-200 hover:scale-[1.03] hover:shadow-md"
                       >
                         Hapus
                       </button>
