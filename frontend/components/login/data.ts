@@ -4,6 +4,7 @@ export type DemoAccount = {
   email: string;
   password: string;
   peran: string;
+  role: "dokter" | "admin";
 };
 
 export const demoAccounts: DemoAccount[] = [
@@ -13,6 +14,7 @@ export const demoAccounts: DemoAccount[] = [
     email: "dr.ayu@mammoguard.id",
     password: "dokter123",
     peran: "Dokter Spesialis",
+    role: "dokter",
   },
   {
     id: "admin",
@@ -20,5 +22,6 @@ export const demoAccounts: DemoAccount[] = [
     email: "admin@mammoguard.id",
     password: "admin123",
     peran: "Admin IT",
+    role: "admin",
   },
 ];

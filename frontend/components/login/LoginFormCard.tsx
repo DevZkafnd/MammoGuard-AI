@@ -7,9 +7,11 @@ type LoginFormCardProps = {
   password: string;
   activeAccountId?: string;
   demoAccounts: DemoAccount[];
+  errorMessage?: string;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSelectDemoAccount: (account: DemoAccount) => void;
+  onSubmit: () => void;
 };
 
 function EyeIcon() {
@@ -41,9 +43,11 @@ export default function LoginFormCard({
   password,
   activeAccountId,
   demoAccounts,
+  errorMessage,
   onEmailChange,
   onPasswordChange,
   onSelectDemoAccount,
+  onSubmit,
 }: LoginFormCardProps) {
   return (
     <section className="w-full max-w-[372px]">
@@ -58,7 +62,10 @@ export default function LoginFormCard({
 
       <form
         className="mt-6 space-y-4.5"
-        onSubmit={(event) => event.preventDefault()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
       >
         <LoginInput
           label="Email"
@@ -85,6 +92,10 @@ export default function LoginFormCard({
         >
           Masuk
         </button>
+
+        {errorMessage ? (
+          <p className="text-[9.5px] font-medium text-[#cf5a63]">{errorMessage}</p>
+        ) : null}
       </form>
 
       <div className="mt-5.5">
