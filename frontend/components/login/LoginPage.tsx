@@ -59,10 +59,10 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="grid min-h-screen bg-gradient-to-br from-[#f0f8ff] to-[#e6f2ff] lg:grid-cols-[280px_minmax(0,1fr)]">
+    <main className="grid h-screen overflow-hidden bg-gradient-to-br from-[#f0f8ff] to-[#e6f2ff] lg:grid-cols-[340px_minmax(0,1fr)]">
       <BrandSidebar />
 
-      <section className="flex items-center justify-center px-8 py-12 lg:px-20">
+      <section className="flex h-screen min-w-0 items-center justify-center overflow-hidden px-8 py-6 lg:px-16">
         <LoginFormCard
           email={email}
           password={password}

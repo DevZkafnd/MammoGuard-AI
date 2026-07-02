@@ -50,18 +50,18 @@ export default function LoginFormCard({
   onSubmit,
 }: LoginFormCardProps) {
   return (
-    <section className="w-full max-w-[372px]">
-      <div className="space-y-1.5">
-        <h2 className="text-[30px] font-semibold tracking-[-0.035em] text-[#1e2937]">
+    <section className="w-full max-w-[392px]">
+      <div className="space-y-1">
+        <h2 className="text-[28px] font-semibold tracking-[-0.035em] text-[#1e2937]">
           Masuk ke akun Anda
         </h2>
-        <p className="max-w-[320px] text-[10.5px] leading-[1.6] text-[#98a2af]">
+        <p className="max-w-[320px] text-[10px] leading-[1.55] text-[#98a2af]">
           Sistem hanya dapat diakses oleh staf medis yang berwenang.
         </p>
       </div>
 
       <form
-        className="mt-6 space-y-4.5"
+        className="mt-5 space-y-3.5"
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit();
@@ -88,7 +88,7 @@ export default function LoginFormCard({
 
         <button
           type="submit"
-          className="flex h-10.5 w-full items-center justify-center rounded-[8px] bg-[#00473f] text-[10.5px] font-semibold text-white transition hover:bg-[#005247]"
+          className="flex h-10 w-full items-center justify-center rounded-[8px] bg-[#00473f] text-[10.5px] font-semibold text-white transition hover:bg-[#005247]"
         >
           Masuk
         </button>
@@ -98,15 +98,15 @@ export default function LoginFormCard({
         ) : null}
       </form>
 
-      <div className="mt-5.5">
-        <div className="relative mb-3.5 text-center">
+      <div className="mt-4.5">
+        <div className="relative mb-3 text-center">
           <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-[#dde3e9]" />
           <span className="relative inline-block bg-[#edf1f4] px-3 text-[8.5px] font-medium text-[#a2acb8]">
             Akun Demo
           </span>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {demoAccounts.map((account) => (
             <DemoAccountCard
               key={account.id}

@@ -14,8 +14,8 @@ function LogoMark() {
 
 export default function BrandSidebar() {
   return (
-    <aside className="flex min-h-[320px] flex-col bg-gradient-to-b from-[#00443b] to-[#006655] px-6 py-8 text-white lg:min-h-screen lg:px-6 shadow-lg">
-      <div className="space-y-20 lg:space-y-28">
+    <aside className="flex h-screen min-w-[340px] shrink-0 flex-col overflow-hidden bg-gradient-to-b from-[#00443b] to-[#006655] px-7 py-7 text-white shadow-lg">
+      <div className="flex h-full flex-col">
         <div className="flex items-start gap-4">
           <LogoMark />
           <div className="space-y-1">
@@ -28,33 +28,33 @@ export default function BrandSidebar() {
           </div>
         </div>
 
-        <div className="max-w-[280px] space-y-6">
-          <h1 className="text-[32px] font-bold leading-[1.15] tracking-[-0.03em] text-white">
+        <div className="mt-12 max-w-[292px] space-y-5">
+          <h1 className="text-[30px] font-bold leading-[1.12] tracking-[-0.03em] text-white">
             Deteksi dini kanker payudara dengan kecerdasan buatan.
           </h1>
-          <p className="max-w-[260px] text-[14px] leading-[1.8] text-white/80 font-medium">
+          <p className="max-w-[270px] text-[13px] font-medium leading-[1.7] text-white/80">
             Platform analisis mammogram berbasis AI untuk mendukung keputusan
             klinis dokter spesialis dengan akurasi hingga 95%.
           </p>
         </div>
-      </div>
 
-      <div className="mt-auto overflow-hidden rounded-[16px] border border-white/15 bg-gradient-to-b from-[#055248] to-[#066a5a] shadow-lg">
-        {statistikPlatform.map((item, index) => (
-          <div
-            key={item.label}
-            className={`grid min-h-[56px] grid-cols-[1fr_auto] items-center gap-5 px-5 transition-all duration-200 hover:bg-white/5 ${
-              index > 0 ? "border-t border-white/10" : ""
-            }`}
-          >
-            <span className="text-[13px] leading-none text-white/75 font-medium">
-              {item.label}
-            </span>
-            <span className="text-[16px] font-bold leading-none tracking-[0.01em] text-white">
-              {item.value}
-            </span>
-          </div>
-        ))}
+        <div className="mt-auto overflow-hidden rounded-[16px] border border-white/15 bg-gradient-to-b from-[#055248] to-[#066a5a] shadow-lg">
+          {statistikPlatform.map((item, index) => (
+            <div
+              key={item.label}
+              className={`grid min-h-[52px] grid-cols-[1fr_auto] items-center gap-4 px-5 transition-all duration-200 hover:bg-white/5 ${
+                index > 0 ? "border-t border-white/10" : ""
+              }`}
+            >
+              <span className="text-[12px] font-medium leading-none text-white/75">
+                {item.label}
+              </span>
+              <span className="text-[15px] font-bold leading-none tracking-[0.01em] text-white">
+                {item.value}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </aside>
   );

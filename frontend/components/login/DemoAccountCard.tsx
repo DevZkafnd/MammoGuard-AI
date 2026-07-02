@@ -46,26 +46,26 @@ export default function DemoAccountCard({
     <button
       type="button"
       onClick={() => onSelect(account)}
-      className={`flex w-full items-center justify-between rounded-[8px] border px-3 py-2.5 text-left transition ${
+      className={`flex w-full items-center justify-between rounded-[8px] border px-3 py-2 text-left transition ${
         isActive
           ? "border-[#0b5c50] bg-white shadow-[0_0_0_1px_rgba(11,92,80,0.18)]"
           : "border-[#e3e8ee] bg-white hover:border-[#cad4dd]"
       }`}
     >
-      <span className="flex min-w-0 items-center gap-3">
+      <span className="flex min-w-0 items-center gap-2.5">
         <UserIcon active={isActive} />
         <span className="min-w-0">
-          <span className="block truncate text-[10.5px] font-semibold text-[#22323f]">
+          <span className="block truncate text-[10px] font-semibold text-[#22323f]">
             {account.nama}
           </span>
-          <span className="mt-0.5 block truncate text-[8.5px] text-[#97a1ae]">
+          <span className="mt-0.5 block truncate text-[8px] text-[#97a1ae]">
             {account.email}
           </span>
         </span>
       </span>
 
       <span
-        className={`shrink-0 rounded-full px-2.5 py-1 text-[7.5px] font-semibold ${
+        className={`shrink-0 rounded-full px-2 py-1 text-[7px] font-semibold ${
           isActive
             ? "bg-[#e8f3f1] text-[#0a5c4f]"
             : "bg-[#eef2f6] text-[#94a0ab]"
