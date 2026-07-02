@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 
+type ResponsUnggahCitra = {
+  nama_berkas: string;
+  [key: string]: unknown;
+};
+
 interface PropsFormUnggahCitra {
-  onBerhasilUnggah?: (data: any) => void;
+  onBerhasilUnggah?: (data: ResponsUnggahCitra) => void;
 }
 
 export default function FormUnggahCitra({ onBerhasilUnggah }: PropsFormUnggahCitra) {
