@@ -90,13 +90,13 @@ const uploadAwal: UploadForm = {
 function FileIcon({ active }: { active?: boolean }) {
   return (
     <span
-      className={`flex h-8 w-8 items-center justify-center rounded-[10px] border ${
+      className={`flex h-7 w-7 items-center justify-center rounded-[9px] border ${
         active
           ? "border-[#8de8d5] bg-[#dff8f2] text-[#0a5c4f]"
           : "border-[#e2e8ee] bg-[#f7f9fb] text-[#94a0ab]"
       }`}
     >
-      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+      <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
         <path
           d="M6.25 3.75H11.25L14.5833 7.08333V15.4167C14.5833 15.8769 14.2102 16.25 13.75 16.25H6.25C5.78976 16.25 5.41667 15.8769 5.41667 15.4167V4.58333C5.41667 4.1231 5.78976 3.75 6.25 3.75Z"
           stroke="currentColor"
@@ -157,7 +157,7 @@ function SecondaryButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-7 items-center justify-center rounded-full border border-[#dce8e4] bg-white px-3 text-[11px] font-semibold text-[#6b7b88] transition hover:border-[#b8d7ce] hover:bg-[#f8fffd]"
+      className="inline-flex h-6.5 items-center justify-center rounded-full border border-[#dce8e4] bg-white px-3 text-[10px] font-semibold text-[#6b7b88] transition hover:border-[#b8d7ce] hover:bg-[#f8fffd]"
     >
       {children}
     </button>
@@ -169,10 +169,10 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex h-7 w-7 items-center justify-center rounded-full border border-[#f4d8dd] bg-[#fff3f5] text-[#f0747d] transition hover:bg-[#ffecef]"
+      className="flex h-6.5 w-6.5 items-center justify-center rounded-full border border-[#f4d8dd] bg-[#fff3f5] text-[#f0747d] transition hover:bg-[#ffecef]"
       aria-label="Hapus model"
     >
-      <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+      <svg viewBox="0 0 20 20" fill="none" className="h-3 w-3" aria-hidden="true">
         <path d="M6 6L14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         <path d="M14 6L6 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
       </svg>
@@ -182,7 +182,7 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
 
 function MetaChip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#8d9aa8]">
+    <span className="inline-flex items-center gap-1 text-[9.5px] font-medium text-[#8d9aa8]">
       <span className="h-1 w-1 rounded-full bg-[#c6d0da]" />
       {children}
     </span>
@@ -498,10 +498,10 @@ export default function ModelManagementPage() {
       <AdminSidebar session={session} onLogout={tanganiLogout} />
 
       <section className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden px-5 py-4">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex shrink-0 items-start justify-between gap-4">
           <div>
-            <h1 className="text-[20px] font-bold text-[#243240]">Manajemen Model AI</h1>
-            <p className="mt-1 text-[11px] font-medium text-[#8a97a4]">
+            <h1 className="text-[19px] font-bold text-[#243240]">Manajemen Model AI</h1>
+            <p className="mt-0.5 text-[10.5px] font-medium text-[#8a97a4]">
               Kelola dan aktifkan model inferensi mammogram
             </p>
           </div>
@@ -509,7 +509,7 @@ export default function ModelManagementPage() {
           <button
             type="button"
             onClick={tanganiBukaUpload}
-            className="inline-flex h-8 items-center gap-2 rounded-[8px] bg-[#00473f] px-3.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#02574b]"
+            className="inline-flex h-8 items-center gap-2 rounded-[8px] bg-[#00473f] px-3.5 text-[10.5px] font-semibold text-white shadow-sm transition hover:bg-[#02574b]"
           >
             <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
               <path d="M10 5V12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -531,10 +531,10 @@ export default function ModelManagementPage() {
           </button>
         </div>
 
-        <div className="mt-4 rounded-[10px] border border-[#b7eee0] bg-[#ecfbf6] px-4 py-3">
+        <div className="mt-3 shrink-0 rounded-[10px] border border-[#b7eee0] bg-[#ecfbf6] px-4 py-2.5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#00473f] text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[#00473f] text-white">
                 <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
                   <path
                     d="M6.25 4.58333H11.25L13.75 7.08333V14.5833C13.75 15.0436 13.3769 15.4167 12.9167 15.4167H6.25C5.78976 15.4167 5.41667 15.0436 5.41667 14.5833V5.41667C5.41667 4.95643 5.78976 4.58333 6.25 4.58333Z"
@@ -553,10 +553,10 @@ export default function ModelManagementPage() {
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#3ba588]">
                   Model Aktif Sekarang
                 </p>
-                <p className="text-[14px] font-bold text-[#1e2f3d]">
+                <p className="text-[13px] font-bold text-[#1e2f3d]">
                   {modelAktif?.nama ?? "Belum ada model aktif"}
                 </p>
-                <p className="mt-0.5 text-[11px] font-semibold text-[#4b6171]">
+                <p className="mt-0.5 text-[10px] font-semibold text-[#4b6171]">
                   {modelAktif?.arsitektur ?? "-"} • Akurasi {modelAktif?.akurasi ?? "-"}
                 </p>
               </div>
@@ -569,22 +569,22 @@ export default function ModelManagementPage() {
           </div>
         </div>
 
-        <div className="mt-3 flex-1 space-y-2 overflow-hidden">
+        <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-hidden">
           {models.map((model) => (
             <div
               key={model.id}
-              className={`rounded-[10px] border bg-white px-3 py-3 shadow-sm ${
+              className={`rounded-[10px] border bg-white px-3 py-2.5 shadow-sm ${
                 model.sedangDigunakan
                   ? "border-[#8de8d5] ring-1 ring-[#b8f0e2]"
                   : "border-[#e6ebef]"
               }`}
             >
               <div className="flex items-center justify-between gap-4">
-                <div className="flex min-w-0 items-center gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
                   <FileIcon active={model.sedangDigunakan} />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[11px] font-bold text-[#22323f]">{model.nama}</p>
+                      <p className="text-[10.5px] font-bold text-[#22323f]">{model.nama}</p>
                       {model.sedangDigunakan ? (
                         <span className="rounded-full bg-[#d8f8ee] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-[#2da87c]">
                           Sedang Digunakan
@@ -592,7 +592,7 @@ export default function ModelManagementPage() {
                       ) : null}
                     </div>
 
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       <MetaChip>Akurasi {model.akurasi}</MetaChip>
                       <MetaChip>{model.arsitektur}</MetaChip>
                       <MetaChip>{model.tanggal}</MetaChip>
@@ -602,10 +602,10 @@ export default function ModelManagementPage() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex shrink-0 items-center gap-2.5">
                   <SecondaryButton onClick={() => setModelDetail(model)}>Detail</SecondaryButton>
                   <span
-                    className={`text-[10px] font-semibold ${
+                    className={`text-[9.5px] font-semibold ${
                       model.aktif ? "text-[#20a874]" : "text-[#9aa7b4]"
                     }`}
                   >
@@ -619,7 +619,7 @@ export default function ModelManagementPage() {
           ))}
         </div>
 
-        <div className="mt-3 flex items-center gap-2 text-[10px] font-medium text-[#8a97a4]">
+        <div className="mt-2 shrink-0 flex items-center gap-2 text-[9.5px] font-medium text-[#8a97a4]">
           <InfoIcon />
           Mengganti model baru akan otomatis menonaktifkan model yang sedang berjalan.
           Pemakaian terakhir disimpan untuk audit inferensi.
