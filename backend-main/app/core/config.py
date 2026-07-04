@@ -57,9 +57,34 @@ class Settings(BaseModel):
     bootstrap_admin_specialization: str = Field(
         default_factory=lambda: os.getenv("BOOTSTRAP_ADMIN_SPECIALIZATION", "System Administrator")
     )
-    image_bucket_name: str = Field(default="images")
-    model_bucket_name: str = Field(default="models")
-    gridfs_chunk_size_bytes: int = Field(default=255 * 1024)
+    r2_endpoint_url: str = Field(
+        default_factory=lambda: os.getenv("R2_ENDPOINT_URL", "https://example-account.r2.cloudflarestorage.com")
+    )
+    r2_access_key_id: str = Field(
+        default_factory=lambda: os.getenv("R2_ACCESS_KEY_ID", "replace-me")
+    )
+    r2_secret_access_key: str = Field(
+        default_factory=lambda: os.getenv("R2_SECRET_ACCESS_KEY", "replace-me")
+    )
+    r2_bucket_name: str = Field(
+        default_factory=lambda: os.getenv("R2_BUCKET_NAME", "mammoguard-storage")
+    )
+    r2_region: str = Field(default_factory=lambda: os.getenv("R2_REGION", "auto"))
+    r2_public_base_url: str = Field(
+        default_factory=lambda: os.getenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+    )
+    presigned_upload_expires_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("PRESIGNED_UPLOAD_EXPIRES_SECONDS", "900"))
+    )
+    presigned_download_expires_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("PRESIGNED_DOWNLOAD_EXPIRES_SECONDS", "300"))
+    )
+    backend_ai_url: str = Field(
+        default_factory=lambda: os.getenv("BACKEND_AI_URL", "http://backend-ai:8001")
+    )
+    backend_ai_timeout_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("BACKEND_AI_TIMEOUT_SECONDS", "60"))
+    )
 
 
 settings = Settings()

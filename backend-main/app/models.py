@@ -37,11 +37,7 @@ class UserBase(MongoModel):
 
 
 class UserCreate(UserBase):
-    name: str = Field(..., min_length=3, max_length=150)
-    email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
-    specialization: str | None = Field(default=None, max_length=120)
-    status: Literal["Aktif", "Nonaktif"] = "Aktif"
     role: Literal["doctor"] = "doctor"
 
 
@@ -59,77 +55,6 @@ class UserInDB(UserBase):
 
 
 class UserPublic(UserBase):
-    id: PyObjectId | None = Field(default=None, alias="_id")
-    createdAt: datetime | None = None
-    updatedAt: datetime | None = None
-
-
-class AnalysisBase(MongoModel):
-    patientId: str = Field(..., min_length=3, max_length=50)
-    patientName: str = Field(..., min_length=3, max_length=150)
-    imageFileId: PyObjectId | None = None
-    heatmapFileId: PyObjectId | None = None
-    imageFormat: Literal["jpg", "png", "dicom"] | None = None
-    imageSizeBytes: int | None = None
-    aiPrediction: Literal["Malignant", "Benign", "Follow-up"] | None = None
-    confidenceScore: float | None = Field(default=None, ge=0, le=100)
-    biradsCategory: str | None = Field(default=None, max_length=4)
-    biradsAiSuggestion: str | None = Field(default=None, max_length=4)
-    doctorNotes: str | None = None
-    recommendation: str | None = None
-    status: Literal["processing", "pending_validation", "validated"] = "processing"
-    modelUsed: PyObjectId | None = None
-    validatedBy: PyObjectId | None = None
-    validatedAt: datetime | None = None
-    gradcamData: dict[str, Any] | None = None
-
-
-class AnalysisCreate(AnalysisBase):
-    pass
-
-
-class AnalysisValidate(MongoModel):
-    biradsCategory: str = Field(..., min_length=1, max_length=4)
-    doctorNotes: str = Field(..., min_length=3)
-    recommendation: str | None = None
-
-
-class AnalysisUploadResponse(MongoModel):
-    id: str = Field(alias="_id")
-    patientId: str
-    patientName: str
-    status: str
-    aiPrediction: str | None = None
-    confidenceScore: float | None = None
-    biradsAiSuggestion: str | None = None
-    imageUrl: str
-    heatmapUrl: str | None = None
-    modelUsed: str | None = None
-
-
-class AnalysisInDB(AnalysisBase):
-    id: PyObjectId | None = Field(default=None, alias="_id")
-    createdAt: datetime | None = None
-    updatedAt: datetime | None = None
-
-
-class AIModelBase(MongoModel):
-    modelId: str = Field(..., min_length=3, max_length=120)
-    label: str = Field(..., min_length=3, max_length=150)
-    architecture: str = Field(..., min_length=3, max_length=100)
-    accuracy: float = Field(..., ge=0, le=100)
-    fileId: PyObjectId | None = None
-    fileSizeBytes: int | None = None
-    isActive: bool = False
-    notes: str | None = None
-    uploadedBy: PyObjectId | None = None
-
-
-class AIModelCreate(AIModelBase):
-    pass
-
-
-class AIModelInDB(AIModelBase):
     id: PyObjectId | None = Field(default=None, alias="_id")
     createdAt: datetime | None = None
     updatedAt: datetime | None = None
@@ -227,25 +152,56 @@ class DoctorListResponse(MongoModel):
     data: list[DoctorResponse]
 
 
-class AIModelUploadRequest(MongoModel):
-    model_id: str = Field(..., min_length=3, max_length=120)
-    architecture: str = Field(..., min_length=2, max_length=100)
-    display_name: str = Field(..., min_length=3, max_length=150)
-    validation_accuracy: float = Field(..., ge=0, le=100)
-    admin_notes: str | None = None
+class AIModelUploadInitRequest(MongoModel):
+    model_name: str = Field(..., min_length=3, max_length=150)
+    model_version: str = Field(..., min_length=1, max_length=50)
+    file_name: str = Field(..., min_length=4, max_length=255)
+    content_type: str = Field(default="application/octet-stream", min_length=3, max_length=120)
 
 
 class AIModelResponse(MongoModel):
     id: str = Field(alias="_id")
     model_id: str
-    architecture: str
-    display_name: str
-    validation_accuracy: float
-    file_id: str
-    file_size: float
-    upload_date: datetime
+    model_name: str
+    model_version: str
+    storage_key: str
+    upload_status: str
     is_active: bool
-    admin_notes: str | None = None
+    upload_date: datetime | None = None
+
+
+class PresignedUrlResponse(MongoModel):
+    object_key: str
+    upload_url: str
+    method: Literal["PUT"] = "PUT"
+    headers: dict[str, str]
+    expires_in: int
+    public_url: str
+
+
+class AnalysisUploadInitRequest(MongoModel):
+    patient_name: str = Field(..., min_length=3, max_length=150)
+    patient_id: str | None = Field(default=None, max_length=80)
+    scan_view: str = Field(default="L CC", min_length=2, max_length=20)
+    file_name: str = Field(..., min_length=4, max_length=255)
+    content_type: str = Field(..., min_length=3, max_length=120)
+
+
+class AnalysisProcessRequest(MongoModel):
+    object_key: str | None = None
+
+
+class AnalysisFileAccessResponse(MongoModel):
+    object_key: str
+    download_url: str
+    expires_in: int
+    public_url: str
+
+
+class WorkspaceValidateRequest(MongoModel):
+    final_birads: str = Field(..., min_length=1, max_length=4)
+    clinical_findings: str | None = None
+    follow_up_recommendation: str | None = None
 
 
 class OAuth2LoginResponse(MongoModel):
@@ -255,12 +211,6 @@ class OAuth2LoginResponse(MongoModel):
     user_id: str
     name: str
     email: EmailStr
-
-
-class WorkspaceValidateRequest(MongoModel):
-    final_birads: str = Field(..., min_length=1, max_length=4)
-    clinical_findings: str | None = None
-    follow_up_recommendation: str | None = None
 
 
 class DashboardStatsResponse(MongoModel):

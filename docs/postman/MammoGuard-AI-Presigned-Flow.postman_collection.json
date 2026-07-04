@@ -1,0 +1,236 @@
+{
+  "info": {
+    "name": "MammoGuard-AI Presigned Flow",
+    "_postman_id": "98e1591c-5c3f-4dd9-9b22-b3cddbb5a111",
+    "description": "Collection untuk menguji alur presigned URL MammoGuard-AI: login, inisialisasi upload model/citra, upload langsung ke object storage, aktivasi model, proses inferensi, dan validasi dokter.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "backend_main_url", "value": "http://127.0.0.1:8000" },
+    { "key": "backend_ai_url", "value": "http://127.0.0.1:8001" },
+    { "key": "admin_email", "value": "admin@mammoguard.id" },
+    { "key": "admin_password", "value": "Admin@12345" },
+    { "key": "doctor_email", "value": "doctor@example.com" },
+    { "key": "doctor_password", "value": "Doctor@12345" },
+    { "key": "admin_access_token", "value": "" },
+    { "key": "doctor_access_token", "value": "" },
+    { "key": "model_id", "value": "resnet50-mammogram-v1" },
+    { "key": "model_upload_url", "value": "https://replace-me-presigned-model-url" },
+    { "key": "model_object_key", "value": "models/resnet50-mammogram-v1/resnet50-v1.pth" },
+    { "key": "analysis_id", "value": "" },
+    { "key": "image_upload_url", "value": "https://replace-me-presigned-image-url" },
+    { "key": "image_object_key", "value": "patients/PAT-001/uploads/scan-left-ab12cd34.dcm" }
+  ],
+  "item": [
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "backend-main health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{backend_main_url}}/api/health",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "health"]
+            }
+          }
+        },
+        {
+          "name": "backend-ai health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{backend_ai_url}}/api/health",
+              "host": ["{{backend_ai_url}}"],
+              "path": ["api", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "{{admin_email}}", "type": "text" },
+                { "key": "password", "value": "{{admin_password}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{backend_main_url}}/api/v1/auth/login",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Doctor Login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "{{doctor_email}}", "type": "text" },
+                { "key": "password", "value": "{{doctor_password}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{backend_main_url}}/api/v1/auth/login",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Model Upload Flow",
+      "description": "Langkah A-B untuk model: minta presigned URL lalu upload file .pth langsung ke R2/S3.",
+      "item": [
+        {
+          "name": "A1 - Init model upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model_name\": \"resnet50-mammogram\",\n  \"model_version\": \"v1\",\n  \"file_name\": \"resnet50-v1.pth\",\n  \"content_type\": \"application/octet-stream\"\n}"
+            },
+            "url": {
+              "raw": "{{backend_main_url}}/api/v1/models/upload",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "v1", "models", "upload"]
+            }
+          }
+        },
+        {
+          "name": "B1 - Upload model ke presigned URL",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/octet-stream", "type": "text" }
+            ],
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": ""
+              }
+            },
+            "url": {
+              "raw": "{{model_upload_url}}",
+              "host": ["{{model_upload_url}}"]
+            }
+          }
+        },
+        {
+          "name": "C1 - Activate model",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{backend_main_url}}/api/v1/models/{{model_id}}/activate",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "v1", "models", "{{model_id}}", "activate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analysis Flow",
+      "description": "Langkah A-B-C untuk citra mammogram: init metadata, upload file ke object storage, lalu trigger inferensi.",
+      "item": [
+        {
+          "name": "A2 - Init analysis upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctor_access_token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_name\": \"Siti Aminah\",\n  \"patient_id\": \"PAT-001\",\n  \"scan_view\": \"L CC\",\n  \"file_name\": \"scan-left.dcm\",\n  \"content_type\": \"application/dicom\"\n}"
+            },
+            "url": {
+              "raw": "{{backend_main_url}}/api/v1/analysis/upload",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "v1", "analysis", "upload"]
+            }
+          }
+        },
+        {
+          "name": "B2 - Upload citra ke presigned URL",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/dicom", "type": "text" }
+            ],
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": ""
+              }
+            },
+            "url": {
+              "raw": "{{image_upload_url}}",
+              "host": ["{{image_upload_url}}"]
+            }
+          }
+        },
+        {
+          "name": "C2 - Trigger inference",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctor_access_token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object_key\": \"{{image_object_key}}\"\n}"
+            },
+            "url": {
+              "raw": "{{backend_main_url}}/api/v1/analysis/{{analysis_id}}/process",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "v1", "analysis", "{{analysis_id}}", "process"]
+            }
+          }
+        },
+        {
+          "name": "Validate analysis",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctor_access_token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"final_birads\": \"4A\",\n  \"clinical_findings\": \"Area suspicious lesion terdeteksi pada kuadran superior.\",\n  \"follow_up_recommendation\": \"Biopsi dan konsultasi lanjutan.\"\n}"
+            },
+            "url": {
+              "raw": "{{backend_main_url}}/api/v1/analysis/{{analysis_id}}/validate",
+              "host": ["{{backend_main_url}}"],
+              "path": ["api", "v1", "analysis", "{{analysis_id}}", "validate"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

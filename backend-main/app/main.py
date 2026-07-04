@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes.analyses import router as analyses_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.auth_v1 import router as auth_v1_router
 from app.api.routes.doctor_portal_v1 import router as doctor_portal_v1_router
@@ -29,7 +28,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Backend monolithic FastAPI untuk MammoGuard AI.",
+    description="API Gateway MammoGuard AI untuk auth, database, dan orkestrasi inference.",
     lifespan=lifespan,
 )
 
@@ -53,7 +52,6 @@ async def root() -> dict[str, str]:
 app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
 app.include_router(users_router, prefix=settings.api_prefix)
-app.include_router(analyses_router, prefix=settings.api_prefix)
 app.include_router(doctors_router, prefix=settings.api_prefix)
 app.include_router(models_admin_router, prefix=settings.api_prefix)
 app.include_router(auth_v1_router, prefix=settings.api_prefix)

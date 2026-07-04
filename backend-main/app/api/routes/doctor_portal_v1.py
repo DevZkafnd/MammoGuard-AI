@@ -1,76 +1,54 @@
+import base64
 import csv
 from datetime import UTC, datetime, time
 from io import BytesIO, StringIO
+import re
 import uuid
 
+import httpx
 from bson import ObjectId
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from PIL import Image
-import numpy as np
-import pydicom
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from app.api.deps import get_current_user, require_role
 from app.core.audit import write_audit_log
-from app.db.gridfs import (
-    download_bytes_from_images,
-    get_image_file_document,
-    upload_bytes_to_images,
-)
-from app.ml.inference import run_local_inference
-from app.models import WorkspaceValidateRequest
+from app.core.serializers import serialize_mongo_document
 from app.db.database import get_database
+from app.models import AnalysisProcessRequest, AnalysisUploadInitRequest, WorkspaceValidateRequest
+from app.services.ai_inference import request_prediction
+from app.services.storage import (
+    download_bytes,
+    generate_presigned_download,
+    generate_presigned_upload,
+    upload_bytes,
+)
 
 
 router = APIRouter(prefix="/v1", tags=["Doctor Portal"])
+
+ALLOWED_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "application/dicom",
+    "application/dicom+json",
+    "application/octet-stream",
+}
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
+    return slug or "item"
 
 
 def _generate_patient_id() -> str:
     return f"PAT-{datetime.now(UTC).strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}"
 
 
-def _to_serializable(value):
-    if isinstance(value, ObjectId):
-        return str(value)
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return value
-
-
 def _serialize_document(document: dict) -> dict:
-    return {key: _to_serializable(value) for key, value in document.items()}
-
-
-def _normalize_pil_from_upload(filename: str, file_bytes: bytes) -> tuple[Image.Image, bytes, str]:
-    normalized_name = (filename or "").lower()
-    suffix = f".{normalized_name.rsplit('.', 1)[1]}" if "." in normalized_name else ""
-    if suffix in {".dcm", ".dicom"}:
-        dicom = pydicom.dcmread(BytesIO(file_bytes))
-        pixel_array = dicom.pixel_array.astype(np.float32)
-        pixel_array -= pixel_array.min()
-        max_value = pixel_array.max() or 1.0
-        pixel_array = np.clip((pixel_array / max_value) * 255.0, 0, 255).astype(np.uint8)
-        image = Image.fromarray(pixel_array).convert("RGB")
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        return image, buffer.getvalue(), "png"
-
-    try:
-        image = Image.open(BytesIO(file_bytes)).convert("RGB")
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Format file tidak didukung: {exc}",
-        )
-
-    output_format = "png" if suffix == ".png" else "jpg"
-    buffer = BytesIO()
-    save_format = "PNG" if output_format == "png" else "JPEG"
-    image.save(buffer, format=save_format)
-    return image, buffer.getvalue(), output_format
+    return serialize_mongo_document(document)
 
 
 def _map_v1_analysis(document: dict) -> dict:
@@ -78,6 +56,7 @@ def _map_v1_analysis(document: dict) -> dict:
     item["analysis_id"] = item["_id"]
     item["original_image_url"] = f"/api/v1/analysis/{item['_id']}/original-image"
     item["heatmap_image_url"] = f"/api/v1/analysis/{item['_id']}/heatmap-image"
+    item["process_url"] = f"/api/v1/analysis/{item['_id']}/process"
     return item
 
 
@@ -89,6 +68,11 @@ async def _get_analysis_or_404(analysis_id: str) -> dict:
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analisis tidak ditemukan.")
     return analysis
+
+
+def _ensure_analysis_access(analysis: dict, current_user: dict) -> None:
+    if analysis["doctor_id"] != current_user["_id"] and current_user["role"] != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
 def _build_history_pipeline(
@@ -119,10 +103,7 @@ def _build_history_pipeline(
             )
         match["created_at"] = created_filter
 
-    return [
-        {"$match": match},
-        {"$sort": {"created_at": -1}},
-    ]
+    return [{"$match": match}, {"$sort": {"created_at": -1}}]
 
 
 @router.get("/doctor/dashboard-stats", dependencies=[Depends(require_role("doctor"))])
@@ -137,7 +118,7 @@ async def dashboard_stats(current_user: dict = Depends(get_current_user)) -> dic
         {"doctor_id": doctor_id, "created_at": {"$gte": start, "$lte": end}}
     )
     pending_validation = await db["mammogram_analyses"].count_documents(
-        {"doctor_id": doctor_id, "status": "Pending"}
+        {"doctor_id": doctor_id, "status": {"$in": ["UploadPending", "Processing", "Pending"]}}
     )
     total_patients = len(
         await db["mammogram_analyses"].distinct("patient_id", {"doctor_id": doctor_id})
@@ -152,59 +133,126 @@ async def dashboard_stats(current_user: dict = Depends(get_current_user)) -> dic
 
 @router.post("/analysis/upload", dependencies=[Depends(require_role("doctor"))], status_code=status.HTTP_201_CREATED)
 async def upload_analysis_v1(
-    image: UploadFile = File(...),
-    patient_name: str = Form(...),
-    patient_id: str | None = Form(default=None),
-    scan_view: str = Form(default="L CC"),
+    payload: AnalysisUploadInitRequest,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    file_bytes = await image.read()
-    if not file_bytes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File citra kosong.")
+    content_type = payload.content_type.strip().lower()
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Content-Type file tidak didukung untuk presigned upload.",
+        )
 
-    _, normalized_bytes, ext = _normalize_pil_from_upload(image.filename or "scan", file_bytes)
-    analysis_patient_id = patient_id.strip() if patient_id else _generate_patient_id()
-
-    db = get_database()
-    raw_file_name = f"{analysis_patient_id}_{scan_view.replace(' ', '_')}_{uuid.uuid4().hex[:6]}.{ext}"
-    original_image_id = await upload_bytes_to_images(
-        filename=raw_file_name,
-        data=normalized_bytes,
-        content_type="image/png" if ext == "png" else "image/jpeg",
-        metadata={"type": "mammogram", "patient_id": analysis_patient_id, "scan_view": scan_view},
+    analysis_patient_id = payload.patient_id.strip() if payload.patient_id else _generate_patient_id()
+    safe_file_name = _slugify(payload.file_name.rsplit(".", 1)[0])
+    extension = payload.file_name.rsplit(".", 1)[-1].lower() if "." in payload.file_name else "bin"
+    object_key = (
+        f"patients/{analysis_patient_id}/uploads/"
+        f"{safe_file_name}-{uuid.uuid4().hex[:8]}.{extension}"
     )
-
-    inference = await run_local_inference(normalized_bytes)
-    heatmap_file_name = f"{analysis_patient_id}_{scan_view.replace(' ', '_')}_gradcam_{uuid.uuid4().hex[:6]}.png"
-    heatmap_image_id = await upload_bytes_to_images(
-        filename=heatmap_file_name,
-        data=inference["heatmapBytes"],
-        content_type="image/png",
-        metadata={"type": "heatmap", "patient_id": analysis_patient_id, "scan_view": scan_view},
-    )
+    upload_payload = await generate_presigned_upload(object_key, payload.content_type)
 
     now = datetime.now(UTC)
     document = {
         "patient_id": analysis_patient_id,
-        "patient_name": patient_name.strip(),
+        "patient_name": payload.patient_name.strip(),
         "doctor_id": current_user["_id"],
-        "scan_view": scan_view,
-        "original_image_id": original_image_id,
-        "heatmap_image_id": heatmap_image_id,
-        "ai_prediction_class": inference["prediction"],
-        "ai_confidence_score": inference["confidence"],
-        "ai_birads_suggestion": inference["biradsAiSuggestion"],
+        "scan_view": payload.scan_view.strip(),
+        "original_image_key": object_key,
+        "original_image_content_type": payload.content_type,
+        "heatmap_image_key": None,
+        "heatmap_image_content_type": None,
+        "ai_prediction_class": None,
+        "ai_confidence_score": None,
+        "ai_birads_suggestion": None,
+        "ai_bounding_boxes": [],
+        "ai_heatmap_array": [],
         "final_birads": None,
         "clinical_findings": None,
         "follow_up_recommendation": None,
-        "status": "Pending",
+        "status": "UploadPending",
         "created_at": now,
+        "updated_at": now,
         "validated_at": None,
-        "model_used": inference["modelUsed"],
+        "model_used": None,
     }
+    db = get_database()
     result = await db["mammogram_analyses"].insert_one(document)
     created = await db["mammogram_analyses"].find_one({"_id": result.inserted_id})
-    return _map_v1_analysis(created)
+    return {
+        "message": "Presigned URL upload citra berhasil dibuat.",
+        "analysis": _map_v1_analysis(created),
+        "upload": upload_payload,
+    }
+
+
+@router.post("/analysis/{analysis_id}/process", dependencies=[Depends(require_role("doctor"))])
+async def process_uploaded_analysis(
+    analysis_id: str,
+    payload: AnalysisProcessRequest,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    analysis = await _get_analysis_or_404(analysis_id)
+    _ensure_analysis_access(analysis, current_user)
+
+    image_key = payload.object_key or analysis.get("original_image_key")
+    if not image_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Object key citra belum tersedia.")
+
+    db = get_database()
+    await db["mammogram_analyses"].update_one(
+        {"_id": analysis["_id"]},
+        {"$set": {"status": "Processing", "updated_at": datetime.now(UTC), "original_image_key": image_key}},
+    )
+
+    try:
+        prediction = await request_prediction(analysis_id=analysis_id, image_key=image_key)
+    except httpx.HTTPError as exc:
+        await db["mammogram_analyses"].update_one(
+            {"_id": analysis["_id"]},
+            {"$set": {"status": "PredictionFailed", "updated_at": datetime.now(UTC), "prediction_error": str(exc)}},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Gagal memproses prediksi dari backend-ai: {exc}",
+        )
+
+    heatmap_key = None
+    heatmap_png = prediction.get("heatmap_png_base64")
+    if heatmap_png:
+        heatmap_key = f"patients/{analysis.get('patient_id')}/heatmaps/{analysis_id}.png"
+        await upload_bytes(
+            object_key=heatmap_key,
+            data=base64.b64decode(heatmap_png),
+            content_type="image/png",
+            metadata={"analysis_id": analysis_id},
+        )
+
+    await db["mammogram_analyses"].update_one(
+        {"_id": analysis["_id"]},
+        {
+            "$set": {
+                "status": "Pending",
+                "updated_at": datetime.now(UTC),
+                "original_image_key": image_key,
+                "heatmap_image_key": heatmap_key,
+                "heatmap_image_content_type": "image/png" if heatmap_key else None,
+                "ai_prediction_class": prediction.get("prediction"),
+                "ai_confidence_score": prediction.get("confidence"),
+                "ai_birads_suggestion": prediction.get("birads_ai_suggestion"),
+                "ai_bounding_boxes": prediction.get("bounding_boxes", []),
+                "ai_heatmap_array": prediction.get("heatmap", []),
+                "model_used": prediction.get("model_used"),
+                "prediction_generated_at": datetime.now(UTC),
+            }
+        },
+    )
+    updated = await db["mammogram_analyses"].find_one({"_id": analysis["_id"]})
+    return {
+        "message": "Prediksi AI berhasil diproses dan disimpan.",
+        "analysis": _map_v1_analysis(updated),
+        "ai_result": prediction,
+    }
 
 
 @router.get("/analysis/{analysis_id}", dependencies=[Depends(require_role("doctor"))])
@@ -213,8 +261,7 @@ async def get_analysis_workspace(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     analysis = await _get_analysis_or_404(analysis_id)
-    if analysis["doctor_id"] != current_user["_id"] and current_user["role"] != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    _ensure_analysis_access(analysis, current_user)
     return _map_v1_analysis(analysis)
 
 
@@ -222,34 +269,26 @@ async def get_analysis_workspace(
 async def get_workspace_original_image(
     analysis_id: str,
     current_user: dict = Depends(get_current_user),
-):
+) -> dict:
     analysis = await _get_analysis_or_404(analysis_id)
-    if analysis["doctor_id"] != current_user["_id"] and current_user["role"] != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-
-    file_id = analysis.get("original_image_id")
-    if not file_id:
+    _ensure_analysis_access(analysis, current_user)
+    object_key = analysis.get("original_image_key")
+    if not object_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File original tidak ditemukan.")
-    file_bytes = await download_bytes_from_images(file_id)
-    file_doc = await get_image_file_document(file_id)
-    content_type = (file_doc or {}).get("metadata", {}).get("contentType", "application/octet-stream")
-    return StreamingResponse(BytesIO(file_bytes), media_type=content_type)
+    return await generate_presigned_download(object_key)
 
 
 @router.get("/analysis/{analysis_id}/heatmap-image", dependencies=[Depends(require_role("doctor"))])
 async def get_workspace_heatmap_image(
     analysis_id: str,
     current_user: dict = Depends(get_current_user),
-):
+) -> dict:
     analysis = await _get_analysis_or_404(analysis_id)
-    if analysis["doctor_id"] != current_user["_id"] and current_user["role"] != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-
-    file_id = analysis.get("heatmap_image_id")
-    if not file_id:
+    _ensure_analysis_access(analysis, current_user)
+    object_key = analysis.get("heatmap_image_key")
+    if not object_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File heatmap tidak ditemukan.")
-    file_bytes = await download_bytes_from_images(file_id)
-    return StreamingResponse(BytesIO(file_bytes), media_type="image/png")
+    return await generate_presigned_download(object_key)
 
 
 @router.put("/analysis/{analysis_id}/validate", dependencies=[Depends(require_role("doctor"))])
@@ -260,8 +299,7 @@ async def validate_analysis_v1(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     analysis = await _get_analysis_or_404(analysis_id)
-    if analysis["doctor_id"] != current_user["_id"] and current_user["role"] != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    _ensure_analysis_access(analysis, current_user)
 
     db = get_database()
     await db["mammogram_analyses"].update_one(
@@ -273,6 +311,7 @@ async def validate_analysis_v1(
                 "follow_up_recommendation": payload.follow_up_recommendation,
                 "status": "Validated",
                 "validated_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
             }
         },
     )
@@ -309,11 +348,7 @@ async def patient_history(
     total_data = count_result[0]["total"] if count_result else 0
     total_pages = max(1, (total_data + limit - 1) // limit) if total_data else 0
 
-    paginated_pipeline = [
-        *pipeline,
-        {"$skip": (page - 1) * limit},
-        {"$limit": limit},
-    ]
+    paginated_pipeline = [*pipeline, {"$skip": (page - 1) * limit}, {"$limit": limit}]
     history = await db["mammogram_analyses"].aggregate(paginated_pipeline).to_list(length=limit)
     return {
         "total_data": total_data,
@@ -402,8 +437,7 @@ async def patient_history_detail(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Riwayat tidak ditemukan.")
 
     item = result[0]
-    if item["doctor_id"] != current_user["_id"] and current_user["role"] != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    _ensure_analysis_access(item, current_user)
 
     doctor_name = None
     if item.get("doctor"):
@@ -448,16 +482,26 @@ async def patient_history_pdf(
         pdf.drawString(40, y, line[:110])
         y -= 16
 
-    for image_bytes, x in [
-        (await download_bytes_from_images(ObjectId(detail["original_image_id"])) if detail.get("original_image_id") else None, 40),
-        (await download_bytes_from_images(ObjectId(detail["heatmap_image_id"])) if detail.get("heatmap_image_id") else None, 300),
-    ]:
-        if not image_bytes:
+    image_sources = [
+        (detail.get("original_image_key"), 40),
+        (detail.get("heatmap_image_key"), 300),
+    ]
+    for object_key, x in image_sources:
+        if not object_key:
             continue
         try:
-            pdf.drawImage(ImageReader(BytesIO(image_bytes)), x, 120, width=220, height=220, preserveAspectRatio=True, mask="auto")
+            image_bytes = await download_bytes(object_key)
+            pdf.drawImage(
+                ImageReader(BytesIO(image_bytes)),
+                x,
+                120,
+                width=220,
+                height=220,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
         except Exception:
-            pass
+            continue
 
     pdf.showPage()
     pdf.save()

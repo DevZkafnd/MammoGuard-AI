@@ -11,6 +11,8 @@ __pycache__/
 .env.development
 .env.production
 backend/.env
+backend-main/.env
+backend-ai/.env
 frontend/.env.local
 *.pem
 credentials.json
@@ -47,10 +49,28 @@ backend/__pycache__/
 backend/**/*.pyc
 backend/**/*.pyo
 backend/**/*.pyd
+backend-main/.venv/
+backend-main/venv/
+backend-main/env/
+backend-main/__pycache__/
+backend-main/**/*.pyc
+backend-main/**/*.pyo
+backend-main/**/*.pyd
+backend-ai/.venv/
+backend-ai/venv/
+backend-ai/env/
+backend-ai/__pycache__/
+backend-ai/**/*.pyc
+backend-ai/**/*.pyo
+backend-ai/**/*.pyd
 
 # file ai dan storage lokal
 backend/storage/
 backend/model_cache/
+backend-main/storage/
+backend-main/model_cache/
+backend-ai/storage/
+backend-ai/model_cache/
 dataset/
 *.pth
 *.pt
