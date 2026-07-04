@@ -273,7 +273,7 @@ function TambahDokterModal({
             <button
               type="button"
               onClick={onSubmit}
-              className="h-12 rounded-[10px] bg-gradient-to-r from-[#8aa6a0] to-[#0a5c4f] text-[14px] font-bold text-white shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-200"
+              className="h-12 rounded-[10px] bg-gradient-to-r from-[#0a5c4f] to-[#0a5c4f] text-[14px] font-bold text-white shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-200"
             >
               Buat Akun
             </button>

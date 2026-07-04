@@ -49,13 +49,14 @@ export default function LoginPage() {
       return;
     }
 
-    if (akunDemo.role !== "admin") {
-      setErrorMessage("Untuk saat ini hanya akun demo admin yang membuka halaman ini.");
+    simpanSesiDemo(buatSesiDemo(akunDemo));
+
+    if (akunDemo.role === "admin") {
+      router.push("/user-manajemen");
       return;
     }
 
-    simpanSesiDemo(buatSesiDemo(akunDemo));
-    router.push("/user-manajemen");
+    router.push("/beranda-dokter");
   };
 
   return (
