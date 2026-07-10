@@ -27,6 +27,9 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("R2_BUCKET_NAME", "mammoguard-storage")
     )
     r2_region: str = Field(default_factory=lambda: os.getenv("R2_REGION", "auto"))
+    storage_cache_dir: str = Field(
+        default_factory=lambda: os.getenv("STORAGE_CACHE_DIR", "./storage_cache")
+    )
 
 
 settings = Settings()

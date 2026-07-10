@@ -101,6 +101,9 @@ class ActiveModelRuntime:
             torch.cuda.empty_cache()
 
     def load_model(self, *, model_id: str, model_bytes: bytes) -> dict:
+        if self.model is not None and self.model_id == model_id:
+            return {"model_id": model_id, "device": str(self.device), "status": "ready"}
+
         self.clear()
         loaded = torch.load(BytesIO(model_bytes), map_location=self.device)
         if isinstance(loaded, nn.Module):

@@ -6,6 +6,7 @@ import boto3
 from botocore.client import BaseClient
 
 from app.core.config import settings
+from app.services import cache
 
 
 @lru_cache(maxsize=1)
@@ -89,14 +90,21 @@ async def upload_bytes(
         )
 
     await asyncio.to_thread(_upload)
+    await cache.write_cached(object_key, data)
     return object_key
 
 
 async def download_bytes(object_key: str) -> bytes:
+    cached = await cache.read_cached(object_key)
+    if cached is not None:
+        return cached
+
     client = _get_s3_client()
 
     def _download() -> bytes:
         response = client.get_object(Bucket=settings.r2_bucket_name, Key=object_key)
         return response["Body"].read()
 
-    return await asyncio.to_thread(_download)
+    data = await asyncio.to_thread(_download)
+    await cache.write_cached(object_key, data)
+    return data

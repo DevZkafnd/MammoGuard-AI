@@ -44,6 +44,9 @@ async def health() -> dict[str, str | None]:
 
 @app.post("/api/ai/setup", tags=["AI"])
 async def setup_model(payload: SetupRequest) -> dict:
+    if active_runtime.model is not None and active_runtime.model_id == payload.model_id:
+        return {"model_id": payload.model_id, "device": str(active_runtime.device), "status": "ready"}
+
     try:
         model_bytes = await download_bytes(payload.storage_key)
         return active_runtime.load_model(model_id=payload.model_id, model_bytes=model_bytes)

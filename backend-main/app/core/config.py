@@ -85,6 +85,9 @@ class Settings(BaseModel):
     backend_ai_timeout_seconds: int = Field(
         default_factory=lambda: int(os.getenv("BACKEND_AI_TIMEOUT_SECONDS", "60"))
     )
+    storage_cache_dir: str = Field(
+        default_factory=lambda: os.getenv("STORAGE_CACHE_DIR", "./storage_cache")
+    )
 
 
 settings = Settings()
