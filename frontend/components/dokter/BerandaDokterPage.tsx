@@ -368,16 +368,19 @@ function WorkspaceView({
   prediction,
   biradsAkhir,
   namaFile,
+  showKoreksiDropdown,
   onChangeBirads,
+  onToggleKoreksi,
   onKoreksi,
   onValidasi,
 }: {
   prediction: Prediction;
   biradsAkhir: string;
   namaFile: string;
-  onChangeBiraks?: never;
+  showKoreksiDropdown: boolean;
   onChangeBirads: (value: string) => void;
-  onKoreksi: () => void;
+  onToggleKoreksi: () => void;
+  onKoreksi: (label: "Benign" | "Malignant") => void;
   onValidasi: () => void;
 }) {
   const isMalignant = prediction.label === "Malignant";
@@ -503,21 +506,59 @@ function WorkspaceView({
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onKoreksi}
-            className="inline-flex h-10 items-center gap-2 rounded-[8px] border-2 border-[#cfd8df] bg-white px-4 text-[11px] font-bold text-[#5a6672] transition hover:bg-[#f8fafc]"
-          >
-            <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
-              <path
-                d="M14 3.5L16.5 6L7 15.5L4 16L4.5 13L14 3.5Z"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Koreksi Hasil AI
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={onToggleKoreksi}
+              className="inline-flex h-10 items-center gap-2 rounded-[8px] border-2 border-[#cfd8df] bg-white px-4 text-[11px] font-bold text-[#5a6672] transition hover:bg-[#f8fafc]"
+            >
+              <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+                <path
+                  d="M14 3.5L16.5 6L7 15.5L4 16L4.5 13L14 3.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Koreksi Hasil AI
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="h-3 w-3"
+                aria-hidden="true"
+              >
+                <path
+                  d="M4 6L8 10L12 6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            
+            {showKoreksiDropdown ? (
+              <div className="absolute left-0 top-full z-10 mt-2 w-48 rounded-[10px] border border-[#e0e6eb] bg-white shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => onKoreksi("Benign")}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-[11px] font-semibold text-[#1a2a3a] transition hover:bg-[#f0faf7]"
+                >
+                  <span className="h-2 w-2 rounded-full bg-[#0a8a59]" />
+                  Benign (Jinak)
+                </button>
+                <div className="h-px bg-[#e0e6eb]" />
+                <button
+                  type="button"
+                  onClick={() => onKoreksi("Malignant")}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-[11px] font-semibold text-[#1a2a3a] transition hover:bg-[#fff5f6]"
+                >
+                  <span className="h-2 w-2 rounded-full bg-[#e22a39]" />
+                  Malignant (Ganas)
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={onValidasi}
@@ -551,11 +592,9 @@ export default function BerandaDokterPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
   const [namaFile, setNamaFile] = useState<string>("");
-  const [prediction] = useState<Prediction>({
-    label: "Malignant",
-    confidence: 94,
-  });
+  const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [biradsAkhir, setBiradsAkhir] = useState<string>("4C");
+  const [showKoreksiDropdown, setShowKoreksiDropdown] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -573,10 +612,50 @@ export default function BerandaDokterPage() {
     };
   }, []);
 
-  const mulaiAnalisis = (file: File) => {
+  const mulaiAnalisis = async (file: File) => {
     setNamaFile(file.name);
     setProgress(0);
     setPhase("processing");
+    
+    // Upload ke backend dan dapatkan hasil AI REAL
+    try {
+      const formData = new FormData();
+      formData.append("berkas", file);
+      
+      const response = await fetch("http://localhost:8000/analisis/unggah", {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error("Gagal upload");
+      }
+      
+      const data = await response.json();
+      
+      // Ekstrak hasil AI
+      const hasilAI = data.data?.analisis;
+      
+      if (hasilAI && hasilAI.label) {
+        setPrediction({
+          label: hasilAI.label as "Benign" | "Malignant",
+          confidence: hasilAI.confidence_score ? hasilAI.confidence_score * 100 : parseFloat(hasilAI.confidence) || 0,
+        });
+      } else {
+        // Fallback jika model belum aktif
+        setPrediction({
+          label: "Benign",
+          confidence: 0,
+        });
+        alert("Model AI belum aktif. Silakan aktifkan model di halaman Manajemen Model AI.");
+      }
+      
+    } catch (error) {
+      console.error("Error analisis:", error);
+      alert("Gagal melakukan analisis. Pastikan backend berjalan.");
+      setPhase("idle");
+      return;
+    }
   };
 
   // Drive the simulated progress while in 'processing'.
@@ -596,15 +675,15 @@ export default function BerandaDokterPage() {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
-          // Pindah ke workspace setelah microtask (supaya UI update progress dulu).
+          // Pindah ke workspace setelah selesai
           queueMicrotask(() => setPhase("workspace"));
           return 100;
         }
-        // Akselerasi ringan
-        const delta = current < 70 ? 6 : current < 90 ? 3 : 2;
+        // Progress simulation
+        const delta = current < 70 ? 8 : current < 90 ? 4 : 2;
         return Math.min(100, current + delta);
       });
-    }, 220);
+    }, 150);
 
     return () => {
       if (timerRef.current) {
@@ -613,8 +692,56 @@ export default function BerandaDokterPage() {
       }
     };
   }, [phase]);
+  
+  const tanganiKoreksi = (koreksiLabel: "Benign" | "Malignant") => {
+    // Update prediction dengan koreksi dokter
+    const updatedPrediction: Prediction = {
+      label: koreksiLabel,
+      confidence: 100, // Koreksi manual = 100% confidence
+    };
+    
+    // Simpan koreksi
+    try {
+      if (typeof window !== "undefined") {
+        const koreksi = {
+          namaFile,
+          prediksiAsli: prediction,
+          koreksiDokter: updatedPrediction,
+          waktu: new Date().toISOString(),
+        };
+        const existing = window.localStorage.getItem("mammoguard-koreksi");
+        const list = existing ? JSON.parse(existing) : [];
+        list.unshift(koreksi);
+        window.localStorage.setItem("mammoguard-koreksi", JSON.stringify(list));
+      }
+    } catch {
+      /* abaikan jika storage tidak tersedia */
+    }
+    
+    setShowKoreksiDropdown(false);
+    setPhase("idle");
+    setProgress(0);
+    setNamaFile("");
+  };
 
-  const tanganiKoreksi = () => {
+  const tanganiValidasi = () => {
+    // Simpan ke localStorage sebagai mini-riwayat
+    try {
+      if (typeof window !== "undefined") {
+        const ringkasan = {
+          namaFile,
+          prediksi: prediction,
+          birads: biradsAkhir,
+          waktu: new Date().toISOString(),
+        };
+        const existing = window.localStorage.getItem("mammoguard-riwayat");
+        const list = existing ? JSON.parse(existing) : [];
+        list.unshift(ringkasan);
+        window.localStorage.setItem("mammoguard-riwayat", JSON.stringify(list));
+      }
+    } catch {
+      /* abaikan jika storage tidak tersedia */
+    }
     setPhase("idle");
     setProgress(0);
     setNamaFile("");
@@ -688,30 +815,11 @@ export default function BerandaDokterPage() {
               prediction={prediction}
               biradsAkhir={biradsAkhir}
               namaFile={namaFile}
+              showKoreksiDropdown={showKoreksiDropdown}
               onChangeBirads={setBiradsAkhir}
+              onToggleKoreksi={() => setShowKoreksiDropdown(!showKoreksiDropdown)}
               onKoreksi={tanganiKoreksi}
-              onValidasi={() => {
-                // Di skenario end-to-end ini, simpan ke localStorage sebagai mini-riwayat.
-                try {
-                  if (typeof window !== "undefined") {
-                    const ringkasan = {
-                      namaFile,
-                      prediksi: prediction,
-                      birads: biradsAkhir,
-                      waktu: new Date().toISOString(),
-                    };
-                    const existing = window.localStorage.getItem("mammoguard-riwayat");
-                    const list = existing ? JSON.parse(existing) : [];
-                    list.unshift(ringkasan);
-                    window.localStorage.setItem("mammoguard-riwayat", JSON.stringify(list));
-                  }
-                } catch {
-                  /* abaikan jika storage tidak tersedia */
-                }
-                setPhase("idle");
-                setProgress(0);
-                setNamaFile("");
-              }}
+              onValidasi={tanganiValidasi}
             />
           </div>
         ) : null}

@@ -1,9 +1,9 @@
-version: '3.8'
 services:
+  # MongoDB Database
   mongodb:
-    image: mongo:latest
+    image: mongo:7.0
     container_name: mammoguard_mongodb
-    restart: always
+    restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin_medis
       MONGO_INITDB_ROOT_PASSWORD: password_lokal_123
@@ -12,6 +12,87 @@ services:
       - "27017:27017"
     volumes:
       - mammoguard_mongo_data:/data/db
+      - mammoguard_mongo_config:/data/configdb
+    networks:
+      - mammoguard_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mammoguard_backend
+    restart: unless-stopped
+    environment:
+      - MONGODB_URL=mongodb://admin_medis:password_lokal_123@mongodb:27017
+      - NAMA_DATABASE=mammoguard_db
+      - JALUR_MODEL=./storage/models/ResNetDemo_1782708575_9063396e.pth
+      - HOST=0.0.0.0
+      - PORT=8000
+      # ============================================
+      # CLOUDFLARE R2 STORAGE CONFIGURATION
+      # ============================================
+      # PENTING: Ganti dengan credentials R2 Anda!
+      # Tutorial setup: lihat SETUP-R2-CLOUDFLARE.md
+      # 
+      # Dapatkan dari: https://dash.cloudflare.com → R2 → Manage R2 API Tokens
+      # 1. Account ID: Lihat di URL dashboard atau profil Anda
+      # 2. Access Key & Secret: Generate API Token dengan Admin Read & Write permission
+      # 3. Endpoint URL: Format https://<account_id>.r2.cloudflarestorage.com
+      # 4. Public URL: Enable R2.dev subdomain di bucket settings (opsional)
+      #
+      # GRATIS 10GB storage + 1 juta operasi/bulan + UNLIMITED bandwidth!
+      - R2_ACCOUNT_ID=
+      - R2_ACCESS_KEY_ID=
+      - R2_SECRET_ACCESS_KEY=
+      - R2_BUCKET_NAME=mammoguard-storage
+      - R2_ENDPOINT_URL=
+      - R2_PUBLIC_URL=
+      # 
+      # Jika R2_ACCOUNT_ID kosong, sistem akan otomatis pakai local storage
+      # Local storage path: ./backend/storage/
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - mammoguard_storage:/app/storage
+    networks:
+      - mammoguard_network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/kesehatan"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mammoguard_frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    networks:
+      - mammoguard_network
+    depends_on:
+      - backend
+
+networks:
+  mammoguard_network:
+    driver: bridge
 
 volumes:
   mammoguard_mongo_data:
+  mammoguard_mongo_config:
+  mammoguard_storage:

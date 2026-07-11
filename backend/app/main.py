@@ -5,21 +5,47 @@ Sistem deteksi dini kanker payudara menggunakan analisis citra mammogram
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
+import os
+
+# Import router dan database
+from app.routes.analisis import router_analisis
+from app.routes.model_management import router_model
+from app.db.koneksi import hubungkan_database, putuskan_database
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage aplikasi lifecycle - startup dan shutdown"""
+    # Startup
+    await hubungkan_database()
+    yield
+    # Shutdown
+    await putuskan_database()
 
 aplikasi = FastAPI(
     title="MammoGuard-AI API",
     description="API untuk analisis citra mammogram menggunakan kecerdasan buatan",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Konfigurasi CORS untuk mengizinkan frontend mengakses API
 aplikasi.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # URL frontend Next.js
+    allow_origins=["http://localhost:3000", "http://frontend:3000"],  # URL frontend Next.js
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files untuk storage lokal
+if os.path.exists("./storage"):
+    aplikasi.mount("/storage", StaticFiles(directory="./storage"), name="storage")
+
+# Register routers
+aplikasi.include_router(router_analisis)
+aplikasi.include_router(router_model)
 
 @aplikasi.get("/")
 async def halaman_utama():

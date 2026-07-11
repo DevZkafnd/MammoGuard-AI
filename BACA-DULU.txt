@@ -1,0 +1,113 @@
+========================================
+   MAMMOGUARD-AI - CARA MENJALANKAN
+========================================
+
+MASALAH SEKARANG:
+Docker Desktop sedang error (500 Internal Server Error)
+Ini karena Docker API bermasalah.
+
+SOLUSI MUDAH:
+==============
+
+1. RESTART DOCKER DESKTOP
+   - Klik kanan icon Docker di system tray (pojok kanan bawah)
+   - Klik "Quit Docker Desktop"
+   - Tunggu sampai benar-benar tertutup (~10 detik)
+   - Buka lagi Docker Desktop dari Start Menu
+   - Tunggu hingga status berubah jadi "Docker Desktop is running"
+   - Ini penting! Tunggu sampai benar-benar siap
+
+2. JALANKAN APLIKASI
+   - Double-click file: JALANKAN-SEKARANG.bat
+   - Atau right-click: CLEANUP-DAN-START.ps1 → Run with PowerShell
+   
+3. TUNGGU ~15 DETIK
+
+4. BUKA BROWSER
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:8000
+   - API Docs: http://localhost:8000/docs
+
+========================================
+
+ATAU MANUAL (jika script tidak jalan):
+========================================
+
+Buka PowerShell di folder ini, lalu:
+
+1. docker-compose down
+2. docker rm -f mammoguard_mongodb mammoguard_backend mammoguard_frontend
+3. docker-compose up -d
+4. docker-compose ps
+
+========================================
+
+VERIFIKASI BERHASIL:
+========================================
+
+Command: docker ps
+
+Harus muncul 3 containers:
+- mammoguard_mongodb (port 27017)
+- mammoguard_backend (port 8000)  
+- mammoguard_frontend (port 3000)
+
+Test backend:
+curl http://localhost:8000/kesehatan
+
+Harus return:
+{"status":"sehat","layanan":"aktif"}
+
+========================================
+
+SEMUA SUDAH SIAP:
+========================================
+✓ Build Docker SELESAI (3.23GB backend, 270MB frontend)
+✓ MongoDB 7.0 sudah ada
+✓ R2 Cloudflare terintegrasi dengan presigned URLs
+✓ Exception handling lengkap
+✓ Frontend 4 pages lengkap
+✓ API 6 endpoints ready
+
+YANG PERLU DILAKUKAN:
+1. Restart Docker Desktop
+2. Run script JALANKAN-SEKARANG.bat
+3. Buka http://localhost:3000
+
+SELESAI!
+
+========================================
+
+FILE PENTING:
+- PANDUAN-CEPAT.md - Panduan lengkap
+- JALANKAN-SEKARANG.bat - Double-click untuk start
+- CLEANUP-DAN-START.ps1 - PowerShell script
+- VERIFIKASI-FINAL.md - Detail integrasi
+- START-HERE.md - Overview lengkap
+
+========================================
+
+JIKA MASIH ERROR:
+Baca file PANDUAN-CEPAT.md section Troubleshooting
+
+atau
+
+Manual start (3 terminal berbeda):
+
+Terminal 1:
+docker run -d --name mammoguard_mongodb -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=admin_medis -e MONGO_INITDB_ROOT_PASSWORD=password_lokal_123 mongo:7.0
+
+Terminal 2:
+cd backend
+venv\Scripts\activate
+uvicorn app.main:aplikasi --reload --host 0.0.0.0 --port 8000
+
+Terminal 3:
+cd frontend
+npm run dev
+
+========================================
+
+SEMUA SUDAH SIAP! HANYA PERLU RESTART DOCKER!
+
+========================================

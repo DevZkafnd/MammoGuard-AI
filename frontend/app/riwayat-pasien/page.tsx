@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 
 import DokterSidebar from "@/components/dokter/DokterSidebar";
@@ -442,44 +442,86 @@ export default function RiwayatPasienPage() {
     () => null,
   );
 
-  // Merge data mock + item lokal yang baru saja divalidasi.
-  // Dipakai useState initializer + sinkron via storage event di bawah.
-  const [items] = useState<RiwayatPasien[]>(() => {
-    if (typeof window === "undefined") return dataAwal;
-    try {
-      const raw = window.localStorage.getItem(RIWAYAT_KEY);
-      if (!raw) return dataAwal;
-      const dariStorage = JSON.parse(raw) as Array<{
-        namaFile: string;
-        prediksi: { label: "Benign" | "Malignant"; confidence: number };
-        birads: string;
-        waktu: string;
-      }>;
-      if (!Array.isArray(dariStorage) || dariStorage.length === 0) return dataAwal;
-
-      const tambahan: RiwayatPasien[] = dariStorage.map((entry, index) => ({
-        id: `PAT-LOKAL-${Date.now()}-${index}`,
-        nama: entry.namaFile,
-        tanggal: new Date(entry.waktu).toLocaleDateString("id-ID", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-        status: entry.prediksi.label === "Malignant" ? "Malignant" : "Benign",
-        birads: (entry.birads as Birads) ?? "2",
-        confidence: entry.prediksi.confidence,
-        catatan: "Hasil analisis yang baru saja divalidasi dari Beranda.",
-      }));
-
-      return [...tambahan, ...dataAwal];
-    } catch {
-      return dataAwal;
-    }
-  });
-
+  // State untuk data real dari backend
+  const [items, setItems] = useState<RiwayatPasien[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [kataKunci, setKataKunci] = useState("");
   const [filterAktif, setFilterAktif] = useState<FilterKey>("semua");
   const [itemDetail, setItemDetail] = useState<RiwayatPasien | null>(null);
+  
+  // Fetch data dari backend
+  useEffect(() => {
+    const fetchRiwayat = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/analisis/riwayat?limit=100");
+        const data = await response.json();
+        
+        if (data.status === "berhasil" && Array.isArray(data.data)) {
+          // Transform data backend ke format frontend
+          const transformed: RiwayatPasien[] = data.data.map((item: any) => {
+            const hasilAnalisis = item.hasil_analisis || {};
+            const label = hasilAnalisis.label || "Unknown";
+            const confidence = hasilAnalisis.confidence_score 
+              ? Math.round(hasilAnalisis.confidence_score * 100) 
+              : 0;
+            
+            // Tentukan status berdasarkan label AI
+            let status: StatusLabel;
+            if (label === "Malignant") {
+              status = "Malignant";
+            } else if (label === "Benign") {
+              status = "Benign";
+            } else {
+              status = "Follow-up";
+            }
+            
+            // Tentukan BI-RADS berdasarkan status
+            let birads: Birads;
+            if (status === "Malignant" && confidence > 90) {
+              birads = "5";
+            } else if (status === "Malignant") {
+              birads = "4C";
+            } else if (status === "Follow-up") {
+              birads = "3";
+            } else if (status === "Benign" && confidence > 90) {
+              birads = "1";
+            } else {
+              birads = "2";
+            }
+            
+            return {
+              id: item._id || `PAT-${Date.now()}`,
+              nama: item.nama_berkas || "Unknown",
+              tanggal: new Date(item.waktu_unggah || Date.now()).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              }),
+              status,
+              birads,
+              confidence,
+              catatan: `Hasil analisis AI model ${hasilAnalisis.model_info?.nama || 'default'}. Confidence score: ${confidence}%.`,
+            };
+          });
+          
+          setItems(transformed);
+        } else {
+          // Jika backend belum ada data, gunakan dummy data
+          setItems(dataAwal);
+        }
+      } catch (error) {
+        console.error("Error fetching riwayat:", error);
+        // Fallback ke dummy data jika backend error
+        setItems(dataAwal);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    if (session?.role === "dokter") {
+      fetchRiwayat();
+    }
+  }, [session]);
 
   const dataTersaring = useMemo(() => {
     const keyword = kataKunci.trim().toLowerCase();
@@ -594,7 +636,12 @@ export default function RiwayatPasienPage() {
         </div>
 
         <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[12px] border border-[#e0e6eb] bg-white shadow-lg">
-          <table className="w-full border-collapse">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <p className="text-[13px] text-[#8a95a1]">Memuat data riwayat...</p>
+            </div>
+          ) : (
+            <table className="w-full border-collapse">
             <thead className="bg-gradient-to-r from-[#f8fafc] to-[#f0f5f9]">
               <tr className="border-b border-[#e8edf1] text-left">
                 <th className="px-5 py-4 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6a7582]">
@@ -662,6 +709,7 @@ export default function RiwayatPasienPage() {
               ) : null}
             </tbody>
           </table>
+          )}
         </div>
       </section>
 

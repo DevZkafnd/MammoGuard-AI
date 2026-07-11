@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 
 import AdminSidebar from "@/components/admin-users/AdminSidebar";
@@ -192,16 +192,22 @@ function MetaChip({ children }: { children: React.ReactNode }) {
 function UploadModelModal({
   form,
   errorMessage,
+  isUploading,
   onClose,
   onSubmit,
   onChange,
+  onFileChange,
 }: {
   form: UploadForm;
   errorMessage: string;
+  isUploading: boolean;
   onClose: () => void;
   onSubmit: () => void;
   onChange: <K extends keyof UploadForm>(field: K, value: UploadForm[K]) => void;
+  onFileChange: (file: File | null) => void;
 }) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 px-6">
       <div className="w-full max-w-[450px] rounded-[18px] bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)]">
@@ -213,7 +219,8 @@ function UploadModelModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-[18px] text-[#97a4b1] transition hover:text-[#6a7582]"
+            disabled={isUploading}
+            className="text-[18px] text-[#97a4b1] transition hover:text-[#6a7582] disabled:opacity-50"
           >
             ×
           </button>
@@ -222,12 +229,27 @@ function UploadModelModal({
         <div className="space-y-4 px-5 py-5">
           <div>
             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7e8d9b]">
-              File Model `.pth`
+              File Model `.pth` *
             </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pth"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                onFileChange(file);
+                if (file) {
+                  onChange("fileName", file.name);
+                }
+              }}
+              className="hidden"
+              disabled={isUploading}
+            />
             <button
               type="button"
-              onClick={() => onChange("fileName", "resnet50_v3_improved.pth")}
-              className="flex w-full items-start gap-3 rounded-[12px] border border-[#e3ebf0] bg-[#fbfcfd] px-4 py-3 text-left transition hover:border-[#c7dad3]"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="flex w-full items-start gap-3 rounded-[12px] border border-[#e3ebf0] bg-[#fbfcfd] px-4 py-3 text-left transition hover:border-[#c7dad3] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#edf5f2] text-[#6e8191]">
                 <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
@@ -254,10 +276,10 @@ function UploadModelModal({
               </span>
               <span className="min-w-0">
                 <span className="block text-[11px] font-semibold text-[#233240]">
-                  {form.fileName || "Klik atau seret file .pth ke sini"}
+                  {form.fileName || "Klik untuk pilih file .pth"}
                 </span>
                 <span className="mt-0.5 block text-[10px] text-[#8d9aa8]">
-                  Maks. 1 file dan ekstensi `.pth` untuk model klasifikasi.
+                  Format: .pth (PyTorch model), Maks: 500MB
                 </span>
               </span>
             </button>
@@ -325,21 +347,29 @@ function UploadModelModal({
               {errorMessage}
             </p>
           ) : null}
+          
+          {isUploading ? (
+            <p className="rounded-[10px] bg-[#e8f5f1] px-3 py-2 text-[11px] font-semibold text-[#0a5c4f]">
+              ⏳ Uploading ke R2 Storage... Mohon tunggu
+            </p>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="h-10 rounded-[10px] border border-[#e2e8ee] bg-white text-[12px] font-semibold text-[#72808d] transition hover:bg-[#f8fafc]"
+              disabled={isUploading}
+              className="h-10 rounded-[10px] border border-[#e2e8ee] bg-white text-[12px] font-semibold text-[#72808d] transition hover:bg-[#f8fafc] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Batal
             </button>
             <button
               type="button"
               onClick={onSubmit}
-              className="h-10 rounded-[10px] bg-[#89a79f] text-[12px] font-semibold text-white transition hover:bg-[#6f9288]"
+              disabled={isUploading}
+              className="h-10 rounded-[10px] bg-[#89a79f] text-[12px] font-semibold text-white transition hover:bg-[#6f9288] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Upload Model
+              {isUploading ? "Uploading..." : "Upload Model"}
             </button>
           </div>
         </div>
@@ -413,10 +443,14 @@ function DeleteModelModal({
 export default function ModelManagementPage() {
   const router = useRouter();
   const session = useSyncExternalStore(subscribeSesiDemo, () => ambilSesiDemo(), () => null);
-  const [models, setModels] = useState(dataModelAwal);
+  const [models, setModels] = useState<AIModel[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadForm, setUploadForm] = useState(uploadAwal);
   const [uploadError, setUploadError] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSwitching, setIsSwitching] = useState<string | null>(null);
   const [modelHapus, setModelHapus] = useState<AIModel | null>(null);
   const [modelDetail, setModelDetail] = useState<AIModel | null>(null);
 
@@ -425,6 +459,45 @@ export default function ModelManagementPage() {
       router.replace("/");
     }
   }, [session, router]);
+  
+  // Fetch models dari backend
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/model/list");
+        const data = await response.json();
+        
+        if (data.status === "berhasil") {
+          // Transform data dari backend ke format frontend
+          const transformedModels: AIModel[] = data.data.map((m: any) => ({
+            id: m.model_id,
+            nama: m.nama,
+            arsitektur: m.arsitektur,
+            tanggal: new Date(m.tanggal_upload).toLocaleDateString("id-ID", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            }),
+            fileName: m.file_name,
+            ukuran: m.ukuran,
+            akurasi: m.akurasi,
+            aktif: m.aktif || false,
+            sedangDigunakan: m.sedang_digunakan || false,
+          }));
+          
+          setModels(transformedModels);
+        }
+      } catch (error) {
+        console.error("Error fetching models:", error);
+        // Fallback ke data dummy jika backend belum ready
+        setModels(dataModelAwal);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchModels();
+  }, []);
 
   const modelAktif = useMemo(
     () => models.find((model) => model.sedangDigunakan) ?? null,
@@ -436,14 +509,36 @@ export default function ModelManagementPage() {
     router.push("/");
   };
 
-  const tanganiToggleModel = (id: string) => {
-    setModels((current) =>
-      current.map((model) =>
-        model.id === id
-          ? { ...model, aktif: !model.aktif, sedangDigunakan: !model.aktif }
-          : { ...model, aktif: false, sedangDigunakan: false },
-      ),
-    );
+  const tanganiToggleModel = async (id: string) => {
+    setIsSwitching(id);
+    
+    try {
+      const response = await fetch(`http://localhost:8000/model/switch/${id}`, {
+        method: "POST",
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === "berhasil") {
+        // Update UI
+        setModels((current) =>
+          current.map((model) =>
+            model.id === id
+              ? { ...model, aktif: true, sedangDigunakan: true }
+              : { ...model, aktif: false, sedangDigunakan: false },
+          ),
+        );
+        
+        alert(`Model "${data.data.nama}" berhasil diaktifkan!\n\nJeda loading pertama kali: ~3-10 detik\nPrediksi selanjutnya: INSTAN ⚡`);
+      } else {
+        alert(`Gagal mengaktifkan model: ${data.detail || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error switching model:", error);
+      alert("Gagal menghubungi server. Pastikan backend berjalan.");
+    } finally {
+      setIsSwitching(null);
+    }
   };
 
   const tanganiBukaUpload = () => {
@@ -452,41 +547,103 @@ export default function ModelManagementPage() {
     setIsUploadOpen(true);
   };
 
-  const tanganiSimpanUpload = () => {
-    if (!uploadForm.fileName || !uploadForm.modelId || !uploadForm.arsitektur) {
-      setUploadError("File model, model ID, dan arsitektur wajib diisi.");
+  const tanganiSimpanUpload = async () => {
+    if (!uploadFile || !uploadForm.modelId || !uploadForm.arsitektur) {
+      setUploadError("File model (.pth), model ID, dan arsitektur wajib diisi.");
       return;
     }
-
-    setModels((current) => [
-      {
-        id: `${uploadForm.modelId.toLowerCase()}-${Date.now()}`,
-        nama: uploadForm.namaTampilan || uploadForm.modelId,
+    
+    setIsUploading(true);
+    setUploadError("");
+    
+    try {
+      // Buat FormData untuk upload
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      
+      // Build query params
+      const params = new URLSearchParams({
+        model_id: uploadForm.modelId,
         arsitektur: uploadForm.arsitektur,
-        tanggal: new Date().toLocaleDateString("id-ID", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-        fileName: uploadForm.fileName,
-        ukuran: "64.8 MB",
-        akurasi: `${uploadForm.akurasi}%`,
-        aktif: false,
-        sedangDigunakan: false,
-      },
-      ...current,
-    ]);
-
-    setIsUploadOpen(false);
+        nama_tampilan: uploadForm.namaTampilan || uploadForm.modelId,
+        akurasi: uploadForm.akurasi,
+      });
+      
+      if (uploadForm.catatan) {
+        params.append("catatan", uploadForm.catatan);
+      }
+      
+      // Upload ke backend
+      const response = await fetch(`http://localhost:8000/model/upload?${params.toString()}`, {
+        method: "POST",
+        body: formData,
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === "berhasil") {
+        // Refresh list model
+        const listResponse = await fetch("http://localhost:8000/model/list");
+        const listData = await listResponse.json();
+        
+        if (listData.status === "berhasil") {
+          const transformedModels: AIModel[] = listData.data.map((m: any) => ({
+            id: m.model_id,
+            nama: m.nama,
+            arsitektur: m.arsitektur,
+            tanggal: new Date(m.tanggal_upload).toLocaleDateString("id-ID", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            }),
+            fileName: m.file_name,
+            ukuran: m.ukuran,
+            akurasi: m.akurasi,
+            aktif: m.aktif || false,
+            sedangDigunakan: m.sedang_digunakan || false,
+          }));
+          
+          setModels(transformedModels);
+        }
+        
+        setIsUploadOpen(false);
+        setUploadFile(null);
+        alert("Model berhasil diupload ke R2 Storage! ✅");
+      } else {
+        setUploadError(data.detail || "Gagal upload model");
+      }
+    } catch (error) {
+      console.error("Error upload model:", error);
+      setUploadError("Gagal menghubungi server. Pastikan backend berjalan.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const tanganiKonfirmasiHapus = () => {
+  const tanganiKonfirmasiHapus = async () => {
     if (!modelHapus) {
       return;
     }
-
-    setModels((current) => current.filter((model) => model.id !== modelHapus.id));
-    setModelHapus(null);
+    
+    try {
+      const response = await fetch(`http://localhost:8000/model/${modelHapus.id}`, {
+        method: "DELETE",
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === "berhasil") {
+        setModels((current) => current.filter((model) => model.id !== modelHapus.id));
+        alert("Model berhasil dihapus! ✅");
+      } else {
+        alert(`Gagal menghapus model: ${data.detail || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error deleting model:", error);
+      alert("Gagal menghubungi server. Pastikan backend berjalan.");
+    } finally {
+      setModelHapus(null);
+    }
   };
 
   if (!session || session.role !== "admin") {
@@ -569,8 +726,19 @@ export default function ModelManagementPage() {
           </div>
         </div>
 
-        <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-hidden">
-          {models.map((model) => (
+        <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-[12px] text-[#8a97a4]">Memuat daftar model...</p>
+            </div>
+          ) : models.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-[12px] text-[#8a97a4]">
+                Belum ada model. Upload model .pth pertama Anda!
+              </p>
+            </div>
+          ) : (
+            models.map((model) => (
             <div
               key={model.id}
               className={`rounded-[10px] border bg-white px-3 py-2.5 shadow-sm ${
@@ -609,14 +777,18 @@ export default function ModelManagementPage() {
                       model.aktif ? "text-[#20a874]" : "text-[#9aa7b4]"
                     }`}
                   >
-                    {model.aktif ? "Aktif" : "Nonaktif"}
+                    {isSwitching === model.id ? "Switching..." : model.aktif ? "Aktif" : "Nonaktif"}
                   </span>
-                  <ToggleSwitch active={model.aktif} onClick={() => tanganiToggleModel(model.id)} />
+                  <ToggleSwitch 
+                    active={model.aktif} 
+                    onClick={() => tanganiToggleModel(model.id)}
+                  />
                   <DeleteButton onClick={() => setModelHapus(model)} />
                 </div>
               </div>
             </div>
-          ))}
+          ))
+          )}
         </div>
 
         <div className="mt-2 shrink-0 flex items-center gap-2 text-[9.5px] font-medium text-[#8a97a4]">
@@ -630,11 +802,16 @@ export default function ModelManagementPage() {
         <UploadModelModal
           form={uploadForm}
           errorMessage={uploadError}
-          onClose={() => setIsUploadOpen(false)}
+          isUploading={isUploading}
+          onClose={() => {
+            setIsUploadOpen(false);
+            setUploadFile(null);
+          }}
           onSubmit={tanganiSimpanUpload}
           onChange={(field, value) =>
             setUploadForm((current) => ({ ...current, [field]: value }))
           }
+          onFileChange={setUploadFile}
         />
       ) : null}
 

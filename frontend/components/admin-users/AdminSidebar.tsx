@@ -35,7 +35,6 @@ type AdminSidebarProps = {
 };
 
 const menuItems = [
-  { label: "Admin IT", href: "", disabled: true },
   { label: "Manajemen Akun", href: "/user-manajemen" },
   { label: "Manajemen Model AI", href: "/manajemen-model-ai" },
 ];
@@ -58,19 +57,7 @@ export default function AdminSidebar({ session, onLogout }: AdminSidebarProps) {
 
         <nav className="mt-8 space-y-2.5">
           {menuItems.map((item) => {
-            const active = item.href ? pathname === item.href : false;
-
-            if (item.disabled) {
-              return (
-                <div
-                  key={item.label}
-                  className="flex w-full items-center gap-3 rounded-[12px] px-4 py-4 text-left text-[#6a7582]"
-                >
-                  <SidebarIcon active={false} />
-                  <span className="text-[15px] font-medium leading-[1.4]">{item.label}</span>
-                </div>
-              );
-            }
+            const active = pathname === item.href;
 
             return (
               <Link
