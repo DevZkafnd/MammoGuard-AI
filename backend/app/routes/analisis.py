@@ -6,6 +6,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from typing import List, Optional
+from pydantic import BaseModel
 import io
 from PIL import Image
 import traceback
@@ -13,8 +14,9 @@ import traceback
 # Import modul internal
 from app.utils.r2_storage import r2_storage
 from app.ml.model import PemuatModel, preprocessing_citra
+from app.ml.gradcam import hasilkan_gradcam
 from app.db.koneksi import dapatkan_database
-from app.routes.model_management import dapatkan_model_aktif
+from app.routes.model_management import dapatkan_model_aktif, muat_ulang_model_aktif_dari_db
 
 router_analisis = APIRouter(
     prefix="/analisis",
@@ -108,39 +110,62 @@ async def unggah_citra(berkas: UploadFile = File(...)):
         try:
             # Load image untuk preprocessing
             citra = Image.open(io.BytesIO(konten_file))
-            
-            # Validasi image
-            if citra.mode not in ['RGB', 'L']:
+
+            # Model memakai normalisasi ImageNet 3-channel, jadi SEMUA citra
+            # (termasuk grayscale mode 'L' pada mammogram) harus dikonversi ke RGB.
+            if citra.mode != 'RGB':
                 citra = citra.convert('RGB')
             
             # Preprocessing
             citra_tensor = preprocessing_citra(citra)
-            
-            # Dapatkan model aktif dari model management
+
+            # Dapatkan model aktif dari model management (lazy-load dari DB jika perlu)
             model = dapatkan_model_aktif()
-            
-            # Prediksi
+            if model is None or model.model is None:
+                # Coba muat ulang model yang ditandai aktif di DB (mis. setelah restart)
+                await muat_ulang_model_aktif_dari_db()
+                model = dapatkan_model_aktif()
+
+            # Prediksi + Grad-CAM
             if model and model.model is not None:
-                hasil_prediksi = model.prediksi(citra_tensor)
-                
-                # Ekstrak hasil (sesuaikan dengan output model Anda)
-                # Contoh: asumsi output adalah probabilitas [Benign, Malignant]
-                import torch
-                probabilitas = torch.softmax(hasil_prediksi, dim=1)
-                kelas_prediksi = torch.argmax(probabilitas, dim=1).item()
-                confidence = probabilitas[0][kelas_prediksi].item()
-                
+                # Grad-CAM sekaligus memberi kelas & confidence dari forward yang sama
+                heatmap_pil, kelas_prediksi, confidence = hasilkan_gradcam(
+                    model.model, model.perangkat, citra_tensor, citra
+                )
+
                 # Map ke label Benign/Malignant
                 label_map = {0: "Benign", 1: "Malignant"}
                 label = label_map.get(kelas_prediksi, "Unknown")
-                
+
+                # Simpan heatmap Grad-CAM ke storage (jika berhasil dibuat)
+                heatmap_url = None
+                if heatmap_pil is not None:
+                    try:
+                        buffer_heatmap = io.BytesIO()
+                        heatmap_pil.save(buffer_heatmap, format="PNG")
+                        nama_heatmap = f"gradcam_{berkas.filename or 'citra'}.png"
+                        hasil_heatmap = await r2_storage.upload_file(
+                            file_content=buffer_heatmap.getvalue(),
+                            original_filename=nama_heatmap,
+                            folder="heatmaps"
+                        )
+                        if hasil_heatmap.get("storage_type") == "r2":
+                            heatmap_url = r2_storage.generate_presigned_download_url(
+                                object_key=hasil_heatmap.get("object_key"),
+                                expiration=3600
+                            )
+                        else:
+                            heatmap_url = hasil_heatmap.get("url")
+                    except Exception as e:
+                        print(f"⚠ Gagal menyimpan heatmap Grad-CAM: {e}")
+
                 hasil_ai = {
                     "label": label,
                     "confidence": f"{confidence * 100:.2f}%",
                     "confidence_score": confidence,
-                    "raw_output": hasil_prediksi.tolist(),
                     "model_status": "loaded",
-                    "model_info": model_aktif.get("model_info") if 'model_aktif' in globals() else None
+                    "heatmap_url": heatmap_url,
+                    "gradcam_tersedia": heatmap_url is not None
                 }
             else:
                 hasil_ai = {
@@ -324,6 +349,82 @@ async def dapatkan_presigned_upload_url(
             status_code=500,
             detail=f"Terjadi kesalahan: {str(e)}"
         )
+
+@router_analisis.get("/statistik")
+async def statistik_analisis():
+    """
+    Statistik untuk dashboard beranda dokter, dihitung dari koleksi 'analisis':
+    - analisis_hari_ini : jumlah analisis dengan waktu_unggah hari ini
+    - pending_validasi  : jumlah analisis yang belum divalidasi dokter
+    - total_pasien      : total rekam analisis (proxy jumlah pasien)
+    """
+    db = dapatkan_database()
+    kosong = {"analisis_hari_ini": 0, "pending_validasi": 0, "total_pasien": 0}
+    if db is None:
+        return {"status": "error", "data": kosong}
+
+    try:
+        sekarang = datetime.now()
+        awal_hari = datetime(sekarang.year, sekarang.month, sekarang.day)
+
+        total = await db["analisis"].count_documents({})
+        hari_ini = await db["analisis"].count_documents({"waktu_unggah": {"$gte": awal_hari}})
+        pending = await db["analisis"].count_documents({"divalidasi": {"$ne": True}})
+
+        return {
+            "status": "berhasil",
+            "data": {
+                "analisis_hari_ini": hari_ini,
+                "pending_validasi": pending,
+                "total_pasien": total,
+            },
+        }
+    except Exception as e:
+        print(f"Error statistik: {e}")
+        return {"status": "error", "data": kosong}
+
+
+class ValidasiRequest(BaseModel):
+    birads: str
+    label_final: Optional[str] = None
+    dokter: Optional[str] = None
+
+
+@router_analisis.post("/{analisis_id}/validasi")
+async def validasi_analisis(analisis_id: str, data: ValidasiRequest):
+    """
+    Menyimpan validasi dokter pada sebuah analisis: tandai divalidasi, simpan
+    kategori BI-RADS akhir dan (opsional) label koreksi. Ini yang membuat
+    'pending_validasi' pada statistik berkurang.
+    """
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    db = dapatkan_database()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database tidak tersedia")
+
+    try:
+        object_id = ObjectId(analisis_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Format ID tidak valid")
+
+    perubahan = {
+        "divalidasi": True,
+        "birads": data.birads,
+        "waktu_validasi": datetime.now(),
+    }
+    if data.label_final:
+        perubahan["label_final"] = data.label_final
+    if data.dokter:
+        perubahan["dokter"] = data.dokter
+
+    hasil = await db["analisis"].update_one({"_id": object_id}, {"$set": perubahan})
+    if hasil.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Analisis tidak ditemukan")
+
+    return {"status": "berhasil", "pesan": "Validasi tersimpan"}
+
 
 @router_analisis.get("/{analisis_id}")
 async def dapatkan_detail_analisis(analisis_id: str):

@@ -2,7 +2,26 @@
  * Layanan untuk melakukan komunikasi dengan API Backend
  */
 
+import { ambilToken } from "@/lib/demoAuth";
+
 const URL_DASAR_API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/**
+ * Fetch ke backend dengan base URL + header Authorization (Bearer token) otomatis.
+ *
+ * Mengembalikan Response mentah agar pemanggil bisa memeriksa status & parsing sendiri.
+ * Tidak memaksa Content-Type sehingga aman untuk FormData maupun JSON.
+ */
+export async function apiFetch(path: string, opsi: RequestInit = {}): Promise<Response> {
+  const token = ambilToken();
+  const headers = new Headers(opsi.headers);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const url = path.startsWith("http") ? path : `${URL_DASAR_API}${path}`;
+  return fetch(url, { ...opsi, headers });
+}
 
 /**
  * Fungsi helper untuk melakukan fetch dengan error handling

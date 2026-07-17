@@ -10,6 +10,8 @@ import {
   subscribeSesiDemo,
 } from "@/lib/demoAuth";
 
+const URL_DASAR_API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 type Birads = "0" | "1" | "2" | "3" | "4A" | "4B" | "4C" | "5" | "6";
 type StatusLabel = "Malignant" | "Benign" | "Follow-up";
 
@@ -235,12 +237,64 @@ const filterTabs: { key: FilterKey; label: string }[] = [
   { key: "follow-up", label: "Follow-up" },
 ];
 
+function escapeHtml(nilai: string): string {
+  return String(nilai).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string),
+  );
+}
+
+function kelasStatus(status: StatusLabel): string {
+  return status === "Malignant" ? "malignant" : status === "Benign" ? "benign" : "followup";
+}
+
+/**
+ * Membuka jendela cetak berisi dokumen HTML lengkap (bukan screenshot),
+ * lalu memicu dialog print browser sehingga pengguna bisa "Save as PDF".
+ */
+function cetakLaporan(judul: string, isiHtml: string) {
+  const win = window.open("", "_blank", "width=900,height=680");
+  if (!win) {
+    alert("Popup diblokir browser. Izinkan popup untuk situs ini agar bisa mengunduh PDF.");
+    return;
+  }
+  win.document.write(
+    `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${escapeHtml(judul)}</title>
+    <style>
+      *{box-sizing:border-box;}
+      body{font-family:Arial,Helvetica,sans-serif;color:#1a2a3a;padding:32px;margin:0;}
+      h1{font-size:20px;margin:0 0 4px;}
+      .brand{color:#0a5c4f;font-weight:bold;letter-spacing:.04em;font-size:12px;margin-bottom:2px;}
+      .sub{color:#6a7582;font-size:12px;margin-bottom:20px;}
+      table{width:100%;border-collapse:collapse;font-size:12px;}
+      th,td{border:1px solid #d5dde3;padding:7px 9px;text-align:left;vertical-align:top;}
+      th{background:#f0f5f9;text-transform:uppercase;font-size:9px;letter-spacing:.06em;color:#5a6672;}
+      .malignant{color:#e22a39;font-weight:bold;}
+      .benign{color:#0a8a59;font-weight:bold;}
+      .followup{color:#b8860b;font-weight:bold;}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;}
+      .card{border:1px solid #d5dde3;border-radius:8px;padding:12px 14px;}
+      .card.wide{grid-column:1 / -1;}
+      .label{font-size:9px;color:#8a95a1;text-transform:uppercase;letter-spacing:.08em;}
+      .val{font-size:13px;font-weight:600;margin-top:3px;line-height:1.5;}
+      .footer{margin-top:26px;border-top:1px solid #e0e6eb;padding-top:10px;font-size:10px;color:#8a95a1;}
+      @media print{body{padding:0;}}
+    </style></head><body>${isiHtml}
+    <div class="footer">Dicetak dari MammoGuard AI — ${new Date().toLocaleString("id-ID")}</div>
+    </body></html>`,
+  );
+  win.document.close();
+  win.focus();
+  win.setTimeout(() => win.print(), 350);
+}
+
 function DetailModal({
   item,
   onClose,
+  onUnduhPdf,
 }: {
   item: RiwayatPasien;
   onClose: () => void;
+  onUnduhPdf: (item: RiwayatPasien) => void;
 }) {
   const rekomendasi = item.status === "Malignant"
     ? "Segera lakukan biopsi jarum inti (core needle biopsy). Rujuk ke onkologi bedah."
@@ -367,6 +421,7 @@ function DetailModal({
           </button>
           <button
             type="button"
+            onClick={() => onUnduhPdf(item)}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-[#0a5c4f] px-4 text-[12px] font-bold text-white shadow-sm transition hover:bg-[#087765]"
           >
             <DownloadIcon />
@@ -380,8 +435,10 @@ function DetailModal({
 
 function EksporDropdown({
   onEkspor,
+  jumlahData,
 }: {
   onEkspor: (format: "csv" | "pdf") => void;
+  jumlahData: number;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -414,7 +471,7 @@ function EksporDropdown({
             >
               <span className="block">Excel / CSV</span>
               <span className="block text-[10px] font-medium text-[#8a95a1]">
-                8 baris data
+                {jumlahData} baris data
               </span>
             </button>
             <button
@@ -453,7 +510,7 @@ export default function RiwayatPasienPage() {
   useEffect(() => {
     const fetchRiwayat = async () => {
       try {
-        const response = await fetch("http://localhost:8000/analisis/riwayat?limit=100");
+        const response = await fetch(`${URL_DASAR_API}/analisis/riwayat?limit=100`);
         const data = await response.json();
         
         if (data.status === "berhasil" && Array.isArray(data.data)) {
@@ -553,14 +610,27 @@ export default function RiwayatPasienPage() {
     return null;
   }
 
+  const dataEkspor = dataTersaring;
+
   const tanganiEkspor = (format: "csv" | "pdf") => {
     if (format === "csv") {
-      const header = ["ID", "Nama", "Tanggal", "Status", "BI-RADS", "Confidence"];
-      const rows = items.map((item) =>
-        [item.id, item.nama, item.tanggal, item.status, item.birads, `${item.confidence}%`].join(","),
+      const bungkus = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+      const header = ["ID", "Nama", "Tanggal", "Status", "BI-RADS", "Confidence", "Catatan"];
+      const rows = dataEkspor.map((item) =>
+        [
+          item.id,
+          item.nama,
+          item.tanggal,
+          item.status,
+          item.birads,
+          `${item.confidence}%`,
+          item.catatan,
+        ]
+          .map(bungkus)
+          .join(","),
       );
-      const csv = [header.join(","), ...rows].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const csv = [header.map(bungkus).join(","), ...rows].join("\n");
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -570,7 +640,58 @@ export default function RiwayatPasienPage() {
       return;
     }
 
-    window.print();
+    // PDF: dokumen HTML lengkap berisi SELURUH data (bukan screenshot layar)
+    const baris = dataEkspor
+      .map(
+        (item) => `<tr>
+          <td>${escapeHtml(item.id)}</td>
+          <td>${escapeHtml(item.nama)}</td>
+          <td>${escapeHtml(item.tanggal)}</td>
+          <td class="${kelasStatus(item.status)}">${escapeHtml(item.status)}</td>
+          <td>BI-RADS ${escapeHtml(item.birads)}</td>
+          <td>${item.confidence}%</td>
+          <td>${escapeHtml(item.catatan)}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const isi = `
+      <div class="brand">MAMMOGUARD AI</div>
+      <h1>Riwayat Pasien</h1>
+      <div class="sub">${dataEkspor.length} rekam analisis • Diekspor ${new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</div>
+      <table>
+        <thead><tr>
+          <th>ID Pasien</th><th>Nama</th><th>Tanggal</th><th>Status</th>
+          <th>BI-RADS</th><th>Confidence</th><th>Temuan Klinis</th>
+        </tr></thead>
+        <tbody>${baris}</tbody>
+      </table>`;
+    cetakLaporan("Riwayat Pasien — MammoGuard AI", isi);
+  };
+
+  const tanganiUnduhPdfPasien = (item: RiwayatPasien) => {
+    const rekomendasi =
+      item.status === "Malignant"
+        ? "Segera lakukan biopsi jarum inti (core needle biopsy). Rujuk ke onkologi bedah."
+        : item.status === "Follow-up"
+          ? "Lakukan evaluasi USG dan follow-up mammogram dalam 6 bulan untuk memantau perubahan."
+          : "Tidak ada tindakan invasif. Jadwalkan kontrol rutin 12 bulan.";
+
+    const isi = `
+      <div class="brand">MAMMOGUARD AI</div>
+      <h1>Laporan Analisis Pasien</h1>
+      <div class="sub">${escapeHtml(item.id)} • ${escapeHtml(item.tanggal)}</div>
+      <div class="grid">
+        <div class="card"><div class="label">Nama Pasien</div><div class="val">${escapeHtml(item.nama)}</div></div>
+        <div class="card"><div class="label">Tanggal Analisis</div><div class="val">${escapeHtml(item.tanggal)}</div></div>
+        <div class="card"><div class="label">Hasil Prediksi AI</div><div class="val ${kelasStatus(item.status)}">${escapeHtml(item.status)}</div></div>
+        <div class="card"><div class="label">Confidence Score</div><div class="val">${item.confidence}%</div></div>
+        <div class="card"><div class="label">Kategori BI-RADS</div><div class="val">BI-RADS ${escapeHtml(item.birads)}</div></div>
+        <div class="card"><div class="label">Radiolog</div><div class="val">Dr. Ayu Permata Sari, Sp.Rad</div></div>
+        <div class="card wide"><div class="label">Temuan Klinis</div><div class="val">${escapeHtml(item.catatan)}</div></div>
+        <div class="card wide"><div class="label">Rekomendasi Tindak Lanjut</div><div class="val">${escapeHtml(rekomendasi)}</div></div>
+      </div>`;
+    cetakLaporan(`Laporan ${item.nama} — MammoGuard AI`, isi);
   };
 
   const tanganiLogout = () => {
@@ -590,7 +711,7 @@ export default function RiwayatPasienPage() {
               {items.length} total rekam analisis tersimpan
             </p>
           </div>
-          <EksporDropdown onEkspor={tanganiEkspor} />
+          <EksporDropdown onEkspor={tanganiEkspor} jumlahData={dataTersaring.length} />
         </header>
 
         <div className="mt-5 flex shrink-0 items-center gap-3">
@@ -714,7 +835,11 @@ export default function RiwayatPasienPage() {
       </section>
 
       {itemDetail ? (
-        <DetailModal item={itemDetail} onClose={() => setItemDetail(null)} />
+        <DetailModal
+          item={itemDetail}
+          onClose={() => setItemDetail(null)}
+          onUnduhPdf={tanganiUnduhPdfPasien}
+        />
       ) : null}
     </main>
   );

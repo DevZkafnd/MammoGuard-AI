@@ -2,8 +2,8 @@
 Endpoint API untuk manajemen model AI (upload, switch, download dari R2)
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
+from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime
 from typing import List, Optional
 import io
@@ -15,6 +15,7 @@ import json
 from app.utils.r2_storage import r2_storage
 from app.ml.model import PemuatModel
 from app.db.koneksi import dapatkan_database
+from app.routes.auth import wajib_admin
 
 router_model = APIRouter(
     prefix="/model",
@@ -27,6 +28,102 @@ model_aktif = {
     "model_loader": None,
     "model_info": None
 }
+
+
+async def _muat_model_ke_memori(model_doc: dict):
+    """
+    Memuat sebuah model (dari dokumen DB) ke memori: unload model lama,
+    unduh dari R2/lokal, load ke memori, lalu set global model_aktif.
+
+    Dipakai oleh switch_model, auto-load saat startup, dan lazy-load saat inferensi.
+    Mengembalikan PemuatModel yang sudah dimuat.
+    """
+    model_id = model_doc.get("model_id")
+
+    # Unload model lama (jika ada)
+    if model_aktif.get("model_loader") is not None:
+        print(f"🔄 Unloading model lama: {model_aktif.get('model_id')}")
+        try:
+            model_aktif["model_loader"].model = None
+        except Exception:
+            pass
+        model_aktif["model_loader"] = None
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    storage_info = model_doc.get("storage_info", {})
+
+    if storage_info.get("storage_type") == "r2":
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        jalur_model = os.path.join(temp_dir, f"model_{model_id}.pth")
+
+        object_key = storage_info.get("object_key")
+        if not object_key:
+            raise ValueError("Object key tidak ditemukan di storage info")
+
+        presigned_url = r2_storage.generate_presigned_download_url(
+            object_key=object_key,
+            expiration=3600
+        )
+        if not presigned_url:
+            raise ValueError("Gagal generate presigned URL untuk download")
+
+        import requests
+        response = requests.get(presigned_url, stream=True)
+        if response.status_code != 200:
+            raise ValueError(f"Gagal download model dari R2: HTTP {response.status_code}")
+
+        with open(jalur_model, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"✓ Model diunduh ke: {jalur_model}")
+    else:
+        jalur_model = storage_info.get("file_path")
+        if not jalur_model or not os.path.exists(jalur_model):
+            raise ValueError("File model tidak ditemukan di storage lokal")
+
+    pemuat = PemuatModel(jalur_model)
+    pemuat.muat_model()
+
+    model_aktif["model_id"] = model_id
+    model_aktif["model_loader"] = pemuat
+    model_aktif["model_info"] = {
+        "model_id": model_id,
+        "nama": model_doc.get("nama"),
+        "arsitektur": model_doc.get("arsitektur"),
+        "akurasi": model_doc.get("akurasi"),
+        "jalur": jalur_model,
+    }
+    return pemuat
+
+
+async def muat_ulang_model_aktif_dari_db():
+    """
+    Memuat kembali model yang ditandai aktif di DB ke memori.
+
+    Dipanggil saat startup (agar aktivasi tetap 'nyambung' setelah restart) dan
+    sebagai lazy-load ketika inferensi menemukan belum ada model di memori.
+    """
+    if model_aktif.get("model_loader") is not None:
+        return model_aktif["model_loader"]
+
+    db = dapatkan_database()
+    if db is None:
+        return None
+
+    model_doc = await db["models"].find_one({"aktif": True})
+    if not model_doc:
+        return None
+
+    try:
+        print(f"⚙ Memuat ulang model aktif dari DB: {model_doc.get('model_id')}")
+        return await _muat_model_ke_memori(model_doc)
+    except Exception as e:
+        print(f"⚠ Gagal memuat ulang model aktif: {e}")
+        return None
 
 @router_model.get("/list")
 async def list_model():
@@ -75,7 +172,8 @@ async def upload_model(
     arsitektur: str = Query(..., description="Arsitektur model (ResNet50, DenseNet121, dll)"),
     nama_tampilan: str = Query(..., description="Nama tampilan model"),
     akurasi: float = Query(..., description="Akurasi validasi (%)"),
-    catatan: Optional[str] = Query(None, description="Catatan opsional")
+    catatan: Optional[str] = Query(None, description="Catatan opsional"),
+    _admin: dict = Depends(wajib_admin)
 ):
     """
     Upload model .pth ke R2 Storage dan simpan metadata ke database
@@ -183,7 +281,7 @@ async def upload_model(
         )
 
 @router_model.post("/switch/{model_id}")
-async def switch_model(model_id: str):
+async def switch_model(model_id: str, _admin: dict = Depends(wajib_admin)):
     """
     Switch model aktif (unload model lama, download & load model baru dari R2)
     
@@ -210,108 +308,20 @@ async def switch_model(model_id: str):
                 status_code=404,
                 detail=f"Model dengan ID '{model_id}' tidak ditemukan"
             )
-        
-        # STEP 1: UNLOAD model lama (jika ada)
-        if model_aktif.get("model_loader") is not None:
-            print(f"🔄 Unloading model lama: {model_aktif.get('model_id')}")
-            
-            # Set model lama ke None untuk trigger garbage collection
-            model_aktif["model_loader"].model = None
-            model_aktif["model_loader"] = None
-            
-            # Force garbage collection
-            import gc
-            gc.collect()
-            
-            # Clear CUDA cache jika menggunakan GPU
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            print("✓ Model lama berhasil di-unload dari memori")
-        
-        # STEP 2: DOWNLOAD model dari R2 (jika menggunakan R2)
-        storage_info = model_doc.get("storage_info", {})
-        
-        if storage_info.get("storage_type") == "r2":
-            print(f"⬇️ Downloading model dari R2: {model_id}")
-            
-            # Download dari R2 ke temporary local storage
-            import tempfile
-            temp_dir = tempfile.gettempdir()
-            temp_model_path = os.path.join(temp_dir, f"model_{model_id}.pth")
-            
-            # Generate presigned URL untuk download
-            object_key = storage_info.get("object_key")
-            if not object_key:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Object key tidak ditemukan di storage info"
-                )
-            
-            presigned_url = r2_storage.generate_presigned_download_url(
-                object_key=object_key,
-                expiration=3600
-            )
-            
-            if not presigned_url:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Gagal generate presigned URL untuk download"
-                )
-            
-            # Download file menggunakan requests
-            import requests
-            response = requests.get(presigned_url, stream=True)
-            
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Gagal download model dari R2: HTTP {response.status_code}"
-                )
-            
-            # Save to temp file
-            with open(temp_model_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            print(f"✓ Model berhasil didownload ke: {temp_model_path}")
-            
-            jalur_model = temp_model_path
-        else:
-            # Model di local storage
-            jalur_model = storage_info.get("file_path")
-            if not jalur_model or not os.path.exists(jalur_model):
-                raise HTTPException(
-                    status_code=404,
-                    detail="File model tidak ditemukan di storage lokal"
-                )
-        
-        # STEP 3: LOAD model baru ke memori
-        print(f"📥 Loading model baru: {model_id}")
-        
+
+        # Unload lama + download + load baru ke memori (helper bersama)
         try:
-            pemuat = PemuatModel(jalur_model)
-            pemuat.muat_model()
-            
+            await _muat_model_ke_memori(model_doc)
             print("✓ Model baru berhasil di-load ke memori")
         except Exception as e:
             raise HTTPException(
                 status_code=500,
                 detail=f"Gagal load model ke memori: {str(e)}"
             )
-        
-        # Update global model_aktif
-        model_aktif["model_id"] = model_id
-        model_aktif["model_loader"] = pemuat
-        model_aktif["model_info"] = {
-            "model_id": model_id,
-            "nama": model_doc.get("nama"),
-            "arsitektur": model_doc.get("arsitektur"),
-            "akurasi": model_doc.get("akurasi"),
-            "jalur": jalur_model
-        }
-        
-        # STEP 4: Update status di database
+
+        jalur_model = model_aktif.get("model_info", {}).get("jalur")
+
+        # Update status di database
         # Set semua model aktif = False
         await db["models"].update_many(
             {},
@@ -370,8 +380,83 @@ async def get_active_model():
         "data": model_aktif.get("model_info")
     }
 
+@router_model.get("/download/{model_id}")
+async def download_model(model_id: str, _admin: dict = Depends(wajib_admin)):
+    """
+    Menyediakan link/berkas untuk mengunduh file model (.pth).
+
+    - Storage R2: generate presigned download URL yang FRESH (URL yang tersimpan
+      saat upload sudah kedaluwarsa setelah 24 jam), lalu kembalikan sebagai download_url.
+    - Storage lokal: kembalikan file langsung sebagai FileResponse.
+    """
+    try:
+        db = dapatkan_database()
+        if db is None:
+            raise HTTPException(status_code=503, detail="Database tidak tersedia")
+
+        model_doc = await db["models"].find_one({"model_id": model_id})
+        if not model_doc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model dengan ID '{model_id}' tidak ditemukan"
+            )
+
+        storage_info = model_doc.get("storage_info", {})
+        file_name = model_doc.get("file_name", f"{model_id}.pth")
+
+        if storage_info.get("storage_type") == "r2":
+            object_key = storage_info.get("object_key")
+            if not object_key:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Object key tidak ditemukan di storage info"
+                )
+
+            download_url = r2_storage.generate_presigned_download_url(
+                object_key=object_key,
+                expiration=3600,  # 1 jam
+                filename=file_name
+            )
+            if not download_url:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Gagal generate presigned URL untuk download"
+                )
+
+            return {
+                "status": "berhasil",
+                "tipe": "url",
+                "download_url": download_url,
+                "file_name": file_name,
+                "expires_in": "1 hour"
+            }
+
+        # Storage lokal
+        file_path = storage_info.get("file_path")
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=404,
+                detail="File model tidak ditemukan di storage lokal"
+            )
+
+        return FileResponse(
+            path=file_path,
+            filename=file_name,
+            media_type="application/octet-stream"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error download model: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Terjadi kesalahan: {str(e)}"
+        )
+
+
 @router_model.delete("/{model_id}")
-async def delete_model(model_id: str):
+async def delete_model(model_id: str, _admin: dict = Depends(wajib_admin)):
     """
     Hapus model dari database dan R2 Storage
     

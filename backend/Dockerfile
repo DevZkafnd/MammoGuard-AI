@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements dan install Python dependencies
+# --timeout & --retries menambah ketahanan terhadap koneksi lambat saat
+# mengunduh paket besar (mis. torch)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --timeout=300 --retries=10 -r requirements.txt
 
 # Copy semua kode aplikasi
 COPY . .

@@ -1,6 +1,7 @@
 import type { DemoAccount } from "@/components/login/data";
 
 const SESSION_KEY = "mammoguard-demo-session";
+const TOKEN_KEY = "mammoguard-token";
 const LAST_PAGE_KEY = "mammoguard-last-page";
 const SESSION_TIMEOUT_KEY = "mammoguard-session-timeout";
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 menit
@@ -22,13 +23,24 @@ export function buatSesiDemo(account: DemoAccount): DemoSession {
   };
 }
 
-export function simpanSesiDemo(session: DemoSession) {
+export function simpanSesiDemo(session: DemoSession, token?: string) {
   if (typeof window === "undefined") {
     return;
   }
 
   window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   window.localStorage.setItem(SESSION_TIMEOUT_KEY, (Date.now() + SESSION_TIMEOUT_MS).toString());
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  }
+}
+
+export function ambilToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(TOKEN_KEY);
 }
 
 export function ambilSesiDemo(): DemoSession | null {
@@ -75,6 +87,7 @@ export function hapusSesiDemo() {
   }
 
   window.localStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(LAST_PAGE_KEY);
   window.localStorage.removeItem(SESSION_TIMEOUT_KEY);
 }

@@ -9,6 +9,7 @@ import {
   hapusSesiDemo,
   subscribeSesiDemo,
 } from "@/lib/demoAuth";
+import { apiFetch } from "@/services/apiLayanan";
 
 type AIModel = {
   id: string;
@@ -464,7 +465,7 @@ export default function ModelManagementPage() {
   useEffect(() => {
     const fetchModels = async () => {
       try {
-        const response = await fetch("http://localhost:8000/model/list");
+        const response = await apiFetch("/model/list");
         const data = await response.json();
         
         if (data.status === "berhasil") {
@@ -513,10 +514,10 @@ export default function ModelManagementPage() {
     setIsSwitching(id);
     
     try {
-      const response = await fetch(`http://localhost:8000/model/switch/${id}`, {
+      const response = await apiFetch(`/model/switch/${id}`, {
         method: "POST",
       });
-      
+
       const data = await response.json();
       
       if (data.status === "berhasil") {
@@ -574,16 +575,16 @@ export default function ModelManagementPage() {
       }
       
       // Upload ke backend
-      const response = await fetch(`http://localhost:8000/model/upload?${params.toString()}`, {
+      const response = await apiFetch(`/model/upload?${params.toString()}`, {
         method: "POST",
         body: formData,
       });
-      
+
       const data = await response.json();
-      
+
       if (data.status === "berhasil") {
         // Refresh list model
-        const listResponse = await fetch("http://localhost:8000/model/list");
+        const listResponse = await apiFetch("/model/list");
         const listData = await listResponse.json();
         
         if (listData.status === "berhasil") {
@@ -626,10 +627,10 @@ export default function ModelManagementPage() {
     }
     
     try {
-      const response = await fetch(`http://localhost:8000/model/${modelHapus.id}`, {
+      const response = await apiFetch(`/model/${modelHapus.id}`, {
         method: "DELETE",
       });
-      
+
       const data = await response.json();
       
       if (data.status === "berhasil") {
@@ -643,6 +644,48 @@ export default function ModelManagementPage() {
       alert("Gagal menghubungi server. Pastikan backend berjalan.");
     } finally {
       setModelHapus(null);
+    }
+  };
+
+  const tanganiDownload = async (model: AIModel) => {
+    try {
+      const response = await apiFetch(`/model/download/${model.id}`);
+
+      if (!response.ok) {
+        alert("Gagal mengunduh model. Pastikan Anda masih login sebagai admin.");
+        return;
+      }
+
+      const tipeKonten = response.headers.get("content-type") || "";
+
+      if (tipeKonten.includes("application/json")) {
+        // Storage R2: backend mengembalikan presigned download URL
+        const data = await response.json();
+        if (data.download_url) {
+          const anchor = document.createElement("a");
+          anchor.href = data.download_url;
+          anchor.download = data.file_name || model.fileName;
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+        } else {
+          alert("URL unduhan tidak tersedia.");
+        }
+      } else {
+        // Storage lokal: backend mengembalikan berkas langsung
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = model.fileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error("Error download model:", error);
+      alert("Gagal menghubungi server. Pastikan backend berjalan.");
     }
   };
 
@@ -772,6 +815,7 @@ export default function ModelManagementPage() {
 
                 <div className="flex shrink-0 items-center gap-2.5">
                   <SecondaryButton onClick={() => setModelDetail(model)}>Detail</SecondaryButton>
+                  <SecondaryButton onClick={() => tanganiDownload(model)}>Download</SecondaryButton>
                   <span
                     className={`text-[9.5px] font-semibold ${
                       model.aktif ? "text-[#20a874]" : "text-[#9aa7b4]"
@@ -877,13 +921,22 @@ export default function ModelManagementPage() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setModelDetail(null)}
-              className="mt-4 h-10 w-full rounded-[10px] border border-[#e2e8ee] bg-white text-[12px] font-semibold text-[#72808d] transition hover:bg-[#f8fafc]"
-            >
-              Tutup
-            </button>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setModelDetail(null)}
+                className="h-10 rounded-[10px] border border-[#e2e8ee] bg-white text-[12px] font-semibold text-[#72808d] transition hover:bg-[#f8fafc]"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={() => tanganiDownload(modelDetail)}
+                className="h-10 rounded-[10px] bg-[#00473f] text-[12px] font-semibold text-white transition hover:bg-[#02574b]"
+              >
+                Download .pth
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

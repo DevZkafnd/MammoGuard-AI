@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const URL_DASAR_API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 type ResponsUnggahCitra = {
   nama_berkas: string;
   [key: string]: unknown;
@@ -55,7 +57,7 @@ export default function FormUnggahCitra({ onBerhasilUnggah }: PropsFormUnggahCit
       const dataForm = new FormData();
       dataForm.append("berkas", berkasYangDipilih);
 
-      const respons = await fetch("http://localhost:8000/analisis/unggah", {
+      const respons = await fetch(`${URL_DASAR_API}/analisis/unggah`, {
         method: "POST",
         body: dataForm,
       });

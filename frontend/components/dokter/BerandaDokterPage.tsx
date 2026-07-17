@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import DokterSidebar from "@/components/dokter/DokterSidebar";
@@ -10,6 +16,8 @@ import {
   subscribeSesiDemo,
 } from "@/lib/demoAuth";
 
+const URL_DASAR_API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 type Phase = "idle" | "processing" | "workspace";
 
 type Prediction = {
@@ -17,29 +25,39 @@ type Prediction = {
   confidence: number;
 };
 
-const statistikKlinik = [
+type StatistikKey = "analisis_hari_ini" | "pending_validasi" | "total_pasien";
+
+const statistikKlinik: {
+  key: StatistikKey;
+  label: string;
+  aksen: string;
+  iconColor: string;
+  iconBg: string;
+}[] = [
   {
+    key: "analisis_hari_ini",
     label: "Analisis Hari Ini",
-    nilai: 12,
     aksen: "from-[#e4f3ef] to-[#d6ece5]",
     iconColor: "#0a5c4f",
     iconBg: "#dff3eb",
   },
   {
+    key: "pending_validasi",
     label: "Pending Validasi",
-    nilai: 3,
     aksen: "from-[#fdf3e3] to-[#f9ead0]",
     iconColor: "#d98a1a",
     iconBg: "#fbecd2",
   },
   {
+    key: "total_pasien",
     label: "Total Pasien",
-    nilai: 247,
     aksen: "from-[#e8eef9] to-[#dde6f3]",
     iconColor: "#3a5fb0",
     iconBg: "#dde6f5",
   },
 ];
+
+type Statistik = Record<StatistikKey, number>;
 
 const opsiBirads = [
   { value: "0", label: "0 - Incomplete" },
@@ -199,11 +217,24 @@ function ImageMock({ heatmap }: { heatmap: boolean }) {
   );
 }
 
-function ImageToolbar() {
+function ImageToolbar({
+  zoomPercent,
+  onZoomIn,
+  onZoomOut,
+  onRotate,
+  onReset,
+}: {
+  zoomPercent: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onRotate: () => void;
+  onReset: () => void;
+}) {
   return (
     <div className="flex items-center gap-3 text-[#a4adc0]">
       <button
         type="button"
+        onClick={onZoomIn}
         className="flex h-8 w-8 items-center justify-center rounded-[8px] hover:bg-white/10 hover:text-white transition"
         aria-label="Zoom in"
       >
@@ -215,6 +246,7 @@ function ImageToolbar() {
       </button>
       <button
         type="button"
+        onClick={onZoomOut}
         className="flex h-8 w-8 items-center justify-center rounded-[8px] hover:bg-white/10 hover:text-white transition"
         aria-label="Zoom out"
       >
@@ -226,6 +258,7 @@ function ImageToolbar() {
       </button>
       <button
         type="button"
+        onClick={onRotate}
         className="flex h-8 w-8 items-center justify-center rounded-[8px] hover:bg-white/10 hover:text-white transition"
         aria-label="Rotate"
       >
@@ -241,6 +274,7 @@ function ImageToolbar() {
       </button>
       <button
         type="button"
+        onClick={onReset}
         className="flex h-8 w-8 items-center justify-center rounded-[8px] hover:bg-white/10 hover:text-white transition"
         aria-label="Reset"
       >
@@ -260,7 +294,7 @@ function ImageToolbar() {
           />
         </svg>
       </button>
-      <span className="text-[11px] font-medium">100%</span>
+      <span className="w-10 text-right text-[11px] font-medium tabular-nums">{zoomPercent}%</span>
     </div>
   );
 }
@@ -368,6 +402,8 @@ function WorkspaceView({
   prediction,
   biradsAkhir,
   namaFile,
+  gambarUrl,
+  heatmapUrl,
   showKoreksiDropdown,
   onChangeBirads,
   onToggleKoreksi,
@@ -377,6 +413,8 @@ function WorkspaceView({
   prediction: Prediction;
   biradsAkhir: string;
   namaFile: string;
+  gambarUrl: string;
+  heatmapUrl: string;
   showKoreksiDropdown: boolean;
   onChangeBirads: (value: string) => void;
   onToggleKoreksi: () => void;
@@ -384,6 +422,40 @@ function WorkspaceView({
   onValidasi: () => void;
 }) {
   const isMalignant = prediction.label === "Malignant";
+
+  // Zoom, rotasi & geser (pan) untuk panel Citra Original
+  const [scale, setScale] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+
+  const zoomIn = () => setScale((s) => Math.min(4, Math.round((s + 0.25) * 100) / 100));
+  const zoomOut = () => setScale((s) => Math.max(0.5, Math.round((s - 0.25) * 100) / 100));
+  const rotate = () => setRotation((r) => (r + 90) % 360);
+  const resetView = () => {
+    setScale(1);
+    setRotation(0);
+    setOffset({ x: 0, y: 0 });
+  };
+
+  const mulaiDrag = (e: ReactMouseEvent) => {
+    dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+    setIsDragging(true);
+  };
+  const gerakDrag = (e: ReactMouseEvent) => {
+    if (!dragRef.current) return;
+    setOffset({
+      x: dragRef.current.ox + (e.clientX - dragRef.current.x),
+      y: dragRef.current.oy + (e.clientY - dragRef.current.y),
+    });
+  };
+  const selesaiDrag = () => {
+    dragRef.current = null;
+    setIsDragging(false);
+  };
+
+  const transform = `translate(${offset.x}px, ${offset.y}px) scale(${scale}) rotate(${rotation}deg)`;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
@@ -412,10 +484,37 @@ function WorkspaceView({
             <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#cbd2e2]">
               CITRA ORIGINAL
             </span>
-            <ImageToolbar />
+            <ImageToolbar
+              zoomPercent={Math.round(scale * 100)}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onRotate={rotate}
+              onReset={resetView}
+            />
           </div>
-          <div className="min-h-0 flex-1">
-            <ImageMock heatmap={false} />
+          <div
+            className={`min-h-0 flex-1 overflow-hidden bg-[#0a0e1a] ${
+              gambarUrl ? (isDragging ? "cursor-grabbing" : "cursor-grab") : ""
+            }`}
+            onMouseDown={gambarUrl ? mulaiDrag : undefined}
+            onMouseMove={isDragging ? gerakDrag : undefined}
+            onMouseUp={selesaiDrag}
+            onMouseLeave={selesaiDrag}
+          >
+            {gambarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={gambarUrl}
+                alt={`Citra mammogram ${namaFile}`}
+                style={{ transform }}
+                draggable={false}
+                className={`h-full w-full select-none object-contain ${
+                  isDragging ? "" : "transition-transform duration-150 ease-out"
+                }`}
+              />
+            ) : (
+              <ImageMock heatmap={false} />
+            )}
           </div>
         </div>
 
@@ -441,8 +540,22 @@ function WorkspaceView({
               </span>
             </div>
           </div>
-          <div className="min-h-0 flex-1">
-            <ImageMock heatmap />
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-[#0a0e1a]">
+            {heatmapUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={heatmapUrl}
+                alt="Grad-CAM heatmap"
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <>
+                <ImageMock heatmap />
+                <p className="absolute inset-x-0 bottom-3 text-center text-[10px] font-medium text-[#7e8aa8]">
+                  Grad-CAM belum tersedia (aktifkan model penuh)
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -467,7 +580,7 @@ function WorkspaceView({
               {prediction.label} {isMalignant ? "(Ganas)" : "(Jinak)"}
             </p>
             <p className="mt-0.5 font-mono text-[10px] font-semibold text-[#5a6672]">
-              Confidence Score: {prediction.confidence}%
+              Confidence Score: {prediction.confidence.toFixed(2)}%
             </p>
           </div>
 
@@ -538,7 +651,7 @@ function WorkspaceView({
             </button>
             
             {showKoreksiDropdown ? (
-              <div className="absolute left-0 top-full z-10 mt-2 w-48 rounded-[10px] border border-[#e0e6eb] bg-white shadow-lg">
+              <div className="absolute bottom-full left-0 z-20 mb-2 w-48 rounded-[10px] border border-[#e0e6eb] bg-white shadow-lg">
                 <button
                   type="button"
                   onClick={() => onKoreksi("Benign")}
@@ -592,10 +705,38 @@ export default function BerandaDokterPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
   const [namaFile, setNamaFile] = useState<string>("");
+  const [gambarUrl, setGambarUrl] = useState<string>("");
+  const [heatmapUrl, setHeatmapUrl] = useState<string>("");
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [biradsAkhir, setBiradsAkhir] = useState<string>("4C");
   const [showKoreksiDropdown, setShowKoreksiDropdown] = useState(false);
+  const [analisisId, setAnalisisId] = useState<string>("");
+  const [statistik, setStatistik] = useState<Statistik>({
+    analisis_hari_ini: 0,
+    pending_validasi: 0,
+    total_pasien: 0,
+  });
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const gambarUrlRef = useRef<string>("");
+
+  const muatStatistik = async () => {
+    try {
+      const res = await fetch(`${URL_DASAR_API}/analisis/statistik`);
+      const data = await res.json();
+      if (data.data) {
+        setStatistik(data.data as Statistik);
+      }
+    } catch {
+      /* biarkan nilai lama jika gagal */
+    }
+  };
+
+  useEffect(() => {
+    if (session?.role === "dokter") {
+      muatStatistik();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.role]);
 
   useEffect(() => {
     if (!session || session.role !== "dokter") {
@@ -603,17 +744,29 @@ export default function BerandaDokterPage() {
     }
   }, [session, router]);
 
-  // Cleanup timer on unmount.
+  // Cleanup timer & object URL on unmount.
   useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
+      if (gambarUrlRef.current) {
+        URL.revokeObjectURL(gambarUrlRef.current);
+      }
     };
   }, []);
 
+  const aturGambarUrl = (url: string) => {
+    if (gambarUrlRef.current) {
+      URL.revokeObjectURL(gambarUrlRef.current);
+    }
+    gambarUrlRef.current = url;
+    setGambarUrl(url);
+  };
+
   const mulaiAnalisis = async (file: File) => {
     setNamaFile(file.name);
+    aturGambarUrl(URL.createObjectURL(file));
     setProgress(0);
     setPhase("processing");
     
@@ -622,7 +775,7 @@ export default function BerandaDokterPage() {
       const formData = new FormData();
       formData.append("berkas", file);
       
-      const response = await fetch("http://localhost:8000/analisis/unggah", {
+      const response = await fetch(`${URL_DASAR_API}/analisis/unggah`, {
         method: "POST",
         body: formData,
       });
@@ -632,24 +785,41 @@ export default function BerandaDokterPage() {
       }
       
       const data = await response.json();
-      
+
+      // Simpan id analisis (untuk persist validasi ke backend nanti)
+      setAnalisisId(data.data?.id || "");
+
       // Ekstrak hasil AI
       const hasilAI = data.data?.analisis;
-      
-      if (hasilAI && hasilAI.label) {
+
+      if (hasilAI && hasilAI.model_status === "loaded" && hasilAI.label) {
         setPrediction({
           label: hasilAI.label as "Benign" | "Malignant",
           confidence: hasilAI.confidence_score ? hasilAI.confidence_score * 100 : parseFloat(hasilAI.confidence) || 0,
         });
+        // Grad-CAM heatmap (prefix backend jika URL relatif dari local storage)
+        const rawHeatmap: string = hasilAI.heatmap_url || "";
+        setHeatmapUrl(
+          rawHeatmap.startsWith("/") ? `${URL_DASAR_API}${rawHeatmap}` : rawHeatmap,
+        );
       } else {
-        // Fallback jika model belum aktif
+        // Bukan hasil "loaded": bedakan model belum aktif vs error inferensi
         setPrediction({
           label: "Benign",
           confidence: 0,
         });
-        alert("Model AI belum aktif. Silakan aktifkan model di halaman Manajemen Model AI.");
+        setHeatmapUrl("");
+        if (hasilAI?.model_status === "error") {
+          alert(
+            `Analisis gagal diproses: ${hasilAI.error || hasilAI.pesan || "kesalahan pada model"}`,
+          );
+        } else {
+          alert(
+            "Model AI belum aktif. Silakan aktifkan model di halaman Manajemen Model AI.",
+          );
+        }
       }
-      
+
     } catch (error) {
       console.error("Error analisis:", error);
       alert("Gagal melakukan analisis. Pastikan backend berjalan.");
@@ -718,33 +888,38 @@ export default function BerandaDokterPage() {
       /* abaikan jika storage tidak tersedia */
     }
     
+    // Terapkan koreksi ke tampilan prediksi dan TETAP di workspace
+    // (jangan reset), agar dokter bisa lanjut mengatur BI-RADS & validasi.
+    setPrediction(updatedPrediction);
     setShowKoreksiDropdown(false);
-    setPhase("idle");
-    setProgress(0);
-    setNamaFile("");
   };
 
-  const tanganiValidasi = () => {
-    // Simpan ke localStorage sebagai mini-riwayat
-    try {
-      if (typeof window !== "undefined") {
-        const ringkasan = {
-          namaFile,
-          prediksi: prediction,
-          birads: biradsAkhir,
-          waktu: new Date().toISOString(),
-        };
-        const existing = window.localStorage.getItem("mammoguard-riwayat");
-        const list = existing ? JSON.parse(existing) : [];
-        list.unshift(ringkasan);
-        window.localStorage.setItem("mammoguard-riwayat", JSON.stringify(list));
+  const tanganiValidasi = async () => {
+    // Persist validasi ke backend (menandai divalidasi + BI-RADS akhir)
+    if (analisisId) {
+      try {
+        await fetch(`${URL_DASAR_API}/analisis/${analisisId}/validasi`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            birads: biradsAkhir,
+            label_final: prediction?.label,
+            dokter: session?.nama,
+          }),
+        });
+        // Segarkan statistik (pending validasi berkurang)
+        await muatStatistik();
+      } catch (error) {
+        console.error("Gagal menyimpan validasi:", error);
       }
-    } catch {
-      /* abaikan jika storage tidak tersedia */
     }
+
     setPhase("idle");
     setProgress(0);
     setNamaFile("");
+    setAnalisisId("");
+    aturGambarUrl("");
+    setHeatmapUrl("");
   };
 
   const tanganiLogout = () => {
@@ -788,7 +963,7 @@ export default function BerandaDokterPage() {
                     </span>
                     <div>
                       <p className="font-mono text-[20px] font-bold text-[#1a2a3a]">
-                        {stat.nilai}
+                        {statistik[stat.key]}
                       </p>
                       <p className="text-[11px] font-medium text-[#5a6672]">{stat.label}</p>
                     </div>
@@ -815,6 +990,8 @@ export default function BerandaDokterPage() {
               prediction={prediction}
               biradsAkhir={biradsAkhir}
               namaFile={namaFile}
+              gambarUrl={gambarUrl}
+              heatmapUrl={heatmapUrl}
               showKoreksiDropdown={showKoreksiDropdown}
               onChangeBirads={setBiradsAkhir}
               onToggleKoreksi={() => setShowKoreksiDropdown(!showKoreksiDropdown)}

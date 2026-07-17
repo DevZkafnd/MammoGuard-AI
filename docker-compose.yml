@@ -1,7 +1,7 @@
 services:
   # MongoDB Database
   mongodb:
-    image: mongo:7.0
+    image: mongo:8.2
     container_name: mammoguard_mongodb
     restart: unless-stopped
     environment:
@@ -9,7 +9,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: password_lokal_123
       MONGO_INITDB_DATABASE: mammoguard_db
     ports:
-      - "27017:27017"
+      - "27019:27017"
     volumes:
       - mammoguard_mongo_data:/data/db
       - mammoguard_mongo_config:/data/configdb
@@ -37,25 +37,12 @@ services:
       # ============================================
       # CLOUDFLARE R2 STORAGE CONFIGURATION
       # ============================================
-      # PENTING: Ganti dengan credentials R2 Anda!
+      # Credentials R2 dibaca otomatis dari backend/.env (via python-dotenv),
+      # yang di-mount ke container lewat volume "./backend:/app" di bawah.
       # Tutorial setup: lihat SETUP-R2-CLOUDFLARE.md
-      # 
-      # Dapatkan dari: https://dash.cloudflare.com → R2 → Manage R2 API Tokens
-      # 1. Account ID: Lihat di URL dashboard atau profil Anda
-      # 2. Access Key & Secret: Generate API Token dengan Admin Read & Write permission
-      # 3. Endpoint URL: Format https://<account_id>.r2.cloudflarestorage.com
-      # 4. Public URL: Enable R2.dev subdomain di bucket settings (opsional)
       #
-      # GRATIS 10GB storage + 1 juta operasi/bulan + UNLIMITED bandwidth!
-      - R2_ACCOUNT_ID=
-      - R2_ACCESS_KEY_ID=
-      - R2_SECRET_ACCESS_KEY=
-      - R2_BUCKET_NAME=mammoguard-storage
-      - R2_ENDPOINT_URL=
-      - R2_PUBLIC_URL=
-      # 
-      # Jika R2_ACCOUNT_ID kosong, sistem akan otomatis pakai local storage
-      # Local storage path: ./backend/storage/
+      # Jika R2_ACCOUNT_ID kosong/tidak diisi di backend/.env, sistem akan
+      # otomatis pakai local storage. Local storage path: ./backend/storage/
     ports:
       - "8000:8000"
     volumes:
@@ -77,6 +64,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     container_name: mammoguard_frontend
     restart: unless-stopped
     environment:

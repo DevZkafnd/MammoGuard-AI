@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import BrandSidebar from "@/components/login/BrandSidebar";
 import { demoAccounts, type DemoAccount } from "@/components/login/data";
 import LoginFormCard from "@/components/login/LoginFormCard";
-import { buatSesiDemo, simpanSesiDemo } from "@/lib/demoAuth";
+import { simpanSesiDemo, type DemoSession } from "@/lib/demoAuth";
+import { apiFetch } from "@/services/apiLayanan";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState(akunAwal.password);
   const [activeAccountId, setActiveAccountId] = useState<string>(akunAwal.id);
   const [errorMessage, setErrorMessage] = useState("");
+  const [sedangMasuk, setSedangMasuk] = useState(false);
 
   const tanganiPilihAkunDemo = (account: DemoAccount) => {
     setEmail(account.email);
@@ -39,24 +41,56 @@ export default function LoginPage() {
     }
   };
 
-  const tanganiMasuk = () => {
-    const akunDemo = demoAccounts.find(
-      (account) => account.email === email && account.password === password,
-    );
-
-    if (!akunDemo) {
-      setErrorMessage("Email atau password demo tidak cocok.");
+  const tanganiMasuk = async () => {
+    if (sedangMasuk) {
       return;
     }
 
-    simpanSesiDemo(buatSesiDemo(akunDemo));
+    setErrorMessage("");
+    setSedangMasuk(true);
 
-    if (akunDemo.role === "admin") {
-      router.push("/user-manajemen");
-      return;
+    try {
+      const respons = await apiFetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!respons.ok) {
+        if (respons.status === 401) {
+          setErrorMessage("Email atau password salah.");
+        } else if (respons.status === 403) {
+          setErrorMessage("Akun dinonaktifkan. Hubungi admin.");
+        } else {
+          setErrorMessage("Gagal masuk. Pastikan server backend berjalan.");
+        }
+        return;
+      }
+
+      const data = await respons.json();
+      const pengguna = data.data;
+      const session: DemoSession = {
+        id: pengguna.id,
+        nama: pengguna.nama,
+        email: pengguna.email,
+        peran: pengguna.peran,
+        role: pengguna.role,
+      };
+
+      simpanSesiDemo(session, data.token);
+
+      if (session.role === "admin") {
+        router.push("/user-manajemen");
+        return;
+      }
+
+      router.push("/beranda-dokter");
+    } catch (error) {
+      console.error("Error login:", error);
+      setErrorMessage("Gagal terhubung ke server. Pastikan backend berjalan.");
+    } finally {
+      setSedangMasuk(false);
     }
-
-    router.push("/beranda-dokter");
   };
 
   return (

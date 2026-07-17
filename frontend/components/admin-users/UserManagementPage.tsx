@@ -9,6 +9,7 @@ import {
   subscribeSesiDemo,
   type DemoSession,
 } from "@/lib/demoAuth";
+import { apiFetch } from "@/services/apiLayanan";
 import AdminSidebar from "@/components/admin-users/AdminSidebar";
 
 type UserStatus = "aktif" | "nonaktif";
@@ -88,6 +89,32 @@ const formTambahAwal: FormTambahUser = {
   spesialisasi: "",
   status: "aktif",
 };
+
+type PenggunaBackend = {
+  id: string;
+  nama: string;
+  email: string;
+  spesialisasi?: string;
+  status?: string;
+  tanggal_dibuat?: string | null;
+};
+
+function petakanDokter(d: PenggunaBackend): DoctorUser {
+  return {
+    id: d.id,
+    nama: d.nama,
+    email: d.email,
+    spesialisasi: d.spesialisasi || "-",
+    status: d.status === "nonaktif" ? "nonaktif" : "aktif",
+    tanggalDibuat: d.tanggal_dibuat
+      ? new Date(d.tanggal_dibuat).toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+      : "-",
+  };
+}
 
 function StatusBadge({ status }: { status: UserStatus }) {
   const isAktif = status === "aktif";
@@ -363,7 +390,7 @@ export default function UserManagementPage() {
     () => null,
   );
   const [kataKunci, setKataKunci] = useState("");
-  const [dataDokter, setDataDokter] = useState(dataDokterAwal);
+  const [dataDokter, setDataDokter] = useState<DoctorUser[]>([]);
   const [isTambahOpen, setIsTambahOpen] = useState(false);
   const [dokterSedangEdit, setDokterSedangEdit] = useState<DoctorUser | null>(null);
   const [formTambah, setFormTambah] = useState<FormTambahUser>(formTambahAwal);
@@ -379,6 +406,28 @@ export default function UserManagementPage() {
       router.replace("/");
     }
   }, [session, router]);
+
+  const muatDokter = async () => {
+    try {
+      const respons = await apiFetch("/pengguna?role=dokter", { method: "GET" });
+      if (!respons.ok) {
+        throw new Error(`HTTP ${respons.status}`);
+      }
+      const data = await respons.json();
+      setDataDokter((data.data as PenggunaBackend[]).map(petakanDokter));
+    } catch (error) {
+      console.error("Gagal memuat data dokter:", error);
+      // Fallback ke data contoh jika backend tidak tersedia
+      setDataDokter(dataDokterAwal);
+    }
+  };
+
+  useEffect(() => {
+    if (session && session.role === "admin") {
+      muatDokter();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
 
   const dataTersaring = useMemo(() => {
     const keyword = kataKunci.trim().toLowerCase();
@@ -418,7 +467,7 @@ export default function UserManagementPage() {
     setDokterSedangEdit(null);
   };
 
-  const tanganiTambahDokter = () => {
+  const tanganiTambahDokter = async () => {
     if (
       !formTambah.nama ||
       !formTambah.email ||
@@ -440,48 +489,80 @@ export default function UserManagementPage() {
       return;
     }
 
-    setDataDokter((current) => [
-      {
-        id: `dokter-${current.length + 1}-${Date.now()}`,
-        nama: formTambah.nama,
-        email: formTambah.email,
-        spesialisasi: formTambah.spesialisasi,
-        tanggalDibuat: new Date().toLocaleDateString("id-ID", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
+    try {
+      const respons = await apiFetch("/pengguna", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nama: formTambah.nama,
+          email: formTambah.email,
+          password: formTambah.password,
+          spesialisasi: formTambah.spesialisasi,
+          status: formTambah.status,
+          role: "dokter",
         }),
-        status: formTambah.status,
-      },
-      ...current,
-    ]);
+      });
 
-    tutupTambahModal();
+      if (!respons.ok) {
+        if (respons.status === 409) {
+          setErrorTambah("Email sudah terdaftar.");
+        } else if (respons.status === 401 || respons.status === 403) {
+          setErrorTambah("Sesi admin tidak valid. Silakan masuk kembali.");
+        } else {
+          setErrorTambah("Gagal membuat akun. Coba lagi.");
+        }
+        return;
+      }
+
+      await muatDokter();
+      tutupTambahModal();
+    } catch (error) {
+      console.error("Gagal membuat akun dokter:", error);
+      setErrorTambah("Gagal terhubung ke server.");
+    }
   };
 
-  const tanganiSimpanEdit = () => {
+  const tanganiSimpanEdit = async () => {
     if (!dokterSedangEdit) {
       return;
     }
 
-    setDataDokter((current) =>
-      current.map((item) =>
-        item.id === dokterSedangEdit.id
-          ? {
-              ...item,
-              nama: formEdit.nama,
-              spesialisasi: formEdit.spesialisasi,
-              status: formEdit.status,
-            }
-          : item,
-      ),
-    );
+    try {
+      const respons = await apiFetch(`/pengguna/${dokterSedangEdit.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nama: formEdit.nama,
+          spesialisasi: formEdit.spesialisasi,
+          status: formEdit.status,
+        }),
+      });
 
-    tutupEditModal();
+      if (!respons.ok) {
+        alert("Gagal menyimpan perubahan akun.");
+        return;
+      }
+
+      await muatDokter();
+      tutupEditModal();
+    } catch (error) {
+      console.error("Gagal menyimpan perubahan:", error);
+      alert("Gagal terhubung ke server.");
+    }
   };
 
-  const tanganiHapus = (id: string) => {
-    setDataDokter((current) => current.filter((item) => item.id !== id));
+  const tanganiHapus = async (id: string) => {
+    try {
+      const respons = await apiFetch(`/pengguna/${id}`, { method: "DELETE" });
+      if (!respons.ok) {
+        alert("Gagal menghapus akun.");
+        return;
+      }
+      await muatDokter();
+    } catch (error) {
+      console.error("Gagal menghapus akun:", error);
+      alert("Gagal terhubung ke server.");
+    }
   };
 
   const tanganiLogout = () => {
