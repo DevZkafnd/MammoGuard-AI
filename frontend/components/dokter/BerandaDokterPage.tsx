@@ -405,10 +405,12 @@ function WorkspaceView({
   gambarUrl,
   heatmapUrl,
   showKoreksiDropdown,
+  alasanKoreksi,
   onChangeBirads,
   onToggleKoreksi,
   onKoreksi,
   onValidasi,
+  onChangeAlasanKoreksi,
 }: {
   prediction: Prediction;
   biradsAkhir: string;
@@ -416,10 +418,12 @@ function WorkspaceView({
   gambarUrl: string;
   heatmapUrl: string;
   showKoreksiDropdown: boolean;
+  alasanKoreksi: string;
   onChangeBirads: (value: string) => void;
   onToggleKoreksi: () => void;
   onKoreksi: (label: "Benign" | "Malignant") => void;
   onValidasi: () => void;
+  onChangeAlasanKoreksi: (value: string) => void;
 }) {
   const isMalignant = prediction.label === "Malignant";
 
@@ -560,139 +564,198 @@ function WorkspaceView({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-4 rounded-[12px] border border-[#e0e6eb] bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div
-            className={`rounded-[10px] border px-4 py-3 shadow-sm ${
-              isMalignant
-                ? "border-[#f4c0c8] bg-gradient-to-r from-[#fff1f3] to-[#ffe8eb]"
-                : "border-[#c5e8d8] bg-gradient-to-r from-[#effaf5] to-[#e6f7f0]"
-            }`}
-          >
-            <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#8a95a1]">
-              PREDIKSI AI
-            </p>
-            <p
-              className={`mt-1 font-mono text-[16px] font-bold ${
-                isMalignant ? "text-[#e22a39]" : "text-[#0a8a59]"
+      <div className="flex shrink-0 flex-col gap-3">
+        {/* Baris pertama: Prediction + BI-RADS + Actions */}
+        <div className="flex items-center justify-between gap-4 rounded-[12px] border border-[#e0e6eb] bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div
+              className={`rounded-[10px] border px-4 py-3 shadow-sm ${
+                isMalignant
+                  ? "border-[#f4c0c8] bg-gradient-to-r from-[#fff1f3] to-[#ffe8eb]"
+                  : "border-[#c5e8d8] bg-gradient-to-r from-[#effaf5] to-[#e6f7f0]"
               }`}
             >
-              {prediction.label} {isMalignant ? "(Ganas)" : "(Jinak)"}
-            </p>
-            <p className="mt-0.5 font-mono text-[10px] font-semibold text-[#5a6672]">
-              Confidence Score: {prediction.confidence.toFixed(2)}%
-            </p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#8a95a1]">
+                PREDIKSI AI
+              </p>
+              <p
+                className={`mt-1 font-mono text-[16px] font-bold ${
+                  isMalignant ? "text-[#e22a39]" : "text-[#0a8a59]"
+                }`}
+              >
+                {prediction.label} {isMalignant ? "(Ganas)" : "(Jinak)"}
+              </p>
+              <p className="mt-0.5 font-mono text-[10px] font-semibold text-[#5a6672]">
+                Confidence Score: {prediction.confidence.toFixed(2)}%
+              </p>
+            </div>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#8a95a1]">
+                KATEGORI BI-RADS AKHIR
+              </span>
+              <div className="relative">
+                <select
+                  value={biradsAkhir}
+                  onChange={(event) => onChangeBirads(event.target.value)}
+                  className="h-10 min-w-[200px] appearance-none rounded-[8px] border-2 border-[#0a5c4f] bg-white pl-3 pr-9 text-[12px] font-bold text-[#1a2a3a] outline-none focus:border-[#087765]"
+                >
+                  {opsiBirads.map((opsi) => (
+                    <option key={opsi.value} value={opsi.value}>
+                      {opsi.label}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#0a5c4f]"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M4 6L8 10L12 6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            </label>
           </div>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#8a95a1]">
-              KATEGORI BI-RADS AKHIR
-            </span>
+          <div className="flex items-center gap-3">
             <div className="relative">
-              <select
-                value={biradsAkhir}
-                onChange={(event) => onChangeBirads(event.target.value)}
-                className="h-10 min-w-[200px] appearance-none rounded-[8px] border-2 border-[#0a5c4f] bg-white pl-3 pr-9 text-[12px] font-bold text-[#1a2a3a] outline-none focus:border-[#087765]"
+              <button
+                type="button"
+                onClick={onToggleKoreksi}
+                className="inline-flex h-10 items-center gap-2 rounded-[8px] border-2 border-[#cfd8df] bg-white px-4 text-[11px] font-bold text-[#5a6672] transition hover:bg-[#f8fafc]"
               >
-                {opsiBirads.map((opsi) => (
-                  <option key={opsi.value} value={opsi.value}>
-                    {opsi.label}
-                  </option>
-                ))}
-              </select>
-              <svg
-                viewBox="0 0 16 16"
-                fill="none"
-                className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#0a5c4f]"
-                aria-hidden="true"
-              >
-                <path
-                  d="M4 6L8 10L12 6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+                <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+                  <path
+                    d="M14 3.5L16.5 6L7 15.5L4 16L4.5 13L14 3.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Koreksi Hasil AI
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  className="h-3 w-3"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M4 6L8 10L12 6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              
+              {showKoreksiDropdown ? (
+                <div className="absolute bottom-full left-0 z-20 mb-2 w-48 rounded-[10px] border border-[#e0e6eb] bg-white shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => onKoreksi("Benign")}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-[11px] font-semibold text-[#1a2a3a] transition hover:bg-[#f0faf7]"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-[#0a8a59]" />
+                    Benign (Jinak)
+                  </button>
+                  <div className="h-px bg-[#e0e6eb]" />
+                  <button
+                    type="button"
+                    onClick={() => onKoreksi("Malignant")}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-[11px] font-semibold text-[#1a2a3a] transition hover:bg-[#fff5f6]"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-[#e22a39]" />
+                    Malignant (Ganas)
+                  </button>
+                </div>
+              ) : null}
             </div>
-          </label>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="relative">
             <button
               type="button"
-              onClick={onToggleKoreksi}
-              className="inline-flex h-10 items-center gap-2 rounded-[8px] border-2 border-[#cfd8df] bg-white px-4 text-[11px] font-bold text-[#5a6672] transition hover:bg-[#f8fafc]"
+              onClick={onValidasi}
+              className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-[#0a5c4f] px-5 text-[11px] font-bold text-white shadow-md transition hover:bg-[#087765]"
             >
               <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
                 <path
-                  d="M14 3.5L16.5 6L7 15.5L4 16L4.5 13L14 3.5Z"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              Koreksi Hasil AI
-              <svg
-                viewBox="0 0 16 16"
-                fill="none"
-                className="h-3 w-3"
-                aria-hidden="true"
-              >
-                <path
-                  d="M4 6L8 10L12 6"
+                  d="M4 10.5L8 14.5L16 6.5"
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
               </svg>
+              Validasi &amp; Simpan ke Riwayat
             </button>
-            
-            {showKoreksiDropdown ? (
-              <div className="absolute bottom-full left-0 z-20 mb-2 w-48 rounded-[10px] border border-[#e0e6eb] bg-white shadow-lg">
-                <button
-                  type="button"
-                  onClick={() => onKoreksi("Benign")}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-[11px] font-semibold text-[#1a2a3a] transition hover:bg-[#f0faf7]"
-                >
-                  <span className="h-2 w-2 rounded-full bg-[#0a8a59]" />
-                  Benign (Jinak)
-                </button>
-                <div className="h-px bg-[#e0e6eb]" />
-                <button
-                  type="button"
-                  onClick={() => onKoreksi("Malignant")}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-[11px] font-semibold text-[#1a2a3a] transition hover:bg-[#fff5f6]"
-                >
-                  <span className="h-2 w-2 rounded-full bg-[#e22a39]" />
-                  Malignant (Ganas)
-                </button>
-              </div>
-            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onValidasi}
-            className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-[#0a5c4f] px-5 text-[11px] font-bold text-white shadow-md transition hover:bg-[#087765]"
-          >
-            <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
-              <path
-                d="M4 10.5L8 14.5L16 6.5"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+        </div>
+
+        {/* Baris kedua: Alasan Koreksi (conditional) */}
+        {prediction.confidence === 100 && alasanKoreksi !== undefined ? (
+          <div className="rounded-[12px] border border-[#ffd23d]/30 bg-[#fffbf0] p-4 shadow-sm">
+            <label className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 text-[#d98a1a]" aria-hidden="true">
+                  <path
+                    d="M10 3.5L17.5 16H2.5L10 3.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M10 8V12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <circle cx="10" cy="14.5" r="0.75" fill="currentColor" />
+                </svg>
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#d98a1a]">
+                  ALASAN KOREKSI (WAJIB untuk Audit Medikolegal)
+                </span>
+              </div>
+              <textarea
+                value={alasanKoreksi}
+                onChange={(e) => onChangeAlasanKoreksi(e.target.value)}
+                placeholder="Contoh: Terdeteksi massa irregular dengan spikulated margin di kuadran lateral atas yang tidak terdeteksi optimal oleh AI. Rekomendasi biopsi."
+                rows={3}
+                className="w-full resize-none rounded-[8px] border-2 border-[#ffd23d] bg-white p-3 text-[11px] text-[#1a2a3a] outline-none transition placeholder:text-[#b8a582] focus:border-[#d98a1a]"
               />
-            </svg>
-            Validasi &amp; Simpan ke Riwayat
-          </button>
+              <p className="text-[9px] text-[#8a7a5a]">
+                Minimal 10 karakter. Alasan ini akan tersimpan di audit trail dan tidak dapat diubah setelah validasi.
+              </p>
+            </label>
+          </div>
+        ) : null}
+
+        {/* Disclaimer Akademik */}
+        <div className="rounded-[10px] border border-[#dde6f3] bg-gradient-to-r from-[#f8fafc] to-[#f0f4f9] px-4 py-2.5">
+          <p className="text-[9px] font-medium text-[#5a6672]">
+            📚 <strong>Prototype Akademik:</strong> Sistem ini menggunakan data sintetis untuk demonstrasi. 
+            Untuk produksi dengan data pasien riil, perlu ethical clearance dan full compliance UU PDP.
+          </p>
         </div>
       </div>
     </div>
   );
 }
+
+type PasienItem = {
+  id: string;
+  id_pasien: string;
+  nama: string;
+  tanggal_pemeriksaan: string;
+  kanan: {
+    prediksi?: string;
+    confidence_score?: number;
+  };
+  kiri: {
+    prediksi?: string;
+    confidence_score?: number;
+  };
+};
 
 export default function BerandaDokterPage() {
   const router = useRouter();
@@ -711,11 +774,21 @@ export default function BerandaDokterPage() {
   const [biradsAkhir, setBiradsAkhir] = useState<string>("4C");
   const [showKoreksiDropdown, setShowKoreksiDropdown] = useState(false);
   const [analisisId, setAnalisisId] = useState<string>("");
+  const [prediksiAsli, setPrediksiAsli] = useState<Prediction | null>(null); // Track original AI prediction
+  const [adaKoreksi, setAdaKoreksi] = useState(false);
+  const [alasanKoreksi, setAlasanKoreksi] = useState<string>("");
   const [statistik, setStatistik] = useState<Statistik>({
     analisis_hari_ini: 0,
     pending_validasi: 0,
     total_pasien: 0,
   });
+  const [daftarPasien, setDaftarPasien] = useState<PasienItem[]>([]);
+  const [isLoadingPasien, setIsLoadingPasien] = useState(false);
+  const [showModalTidakAktif, setShowModalTidakAktif] = useState(false);
+  const [modelInfo, setModelInfo] = useState<{
+    nama?: string;
+    arsitektur?: string;
+  } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const gambarUrlRef = useRef<string>("");
 
@@ -731,9 +804,25 @@ export default function BerandaDokterPage() {
     }
   };
 
+  const muatDaftarPasien = async () => {
+    setIsLoadingPasien(true);
+    try {
+      const res = await fetch(`${URL_DASAR_API}/pasien/?limit=5`);
+      const data = await res.json();
+      if (data.status === "berhasil" && data.data) {
+        setDaftarPasien(data.data);
+      }
+    } catch (error) {
+      console.error("Error loading patients:", error);
+    } finally {
+      setIsLoadingPasien(false);
+    }
+  };
+
   useEffect(() => {
     if (session?.role === "dokter") {
       muatStatistik();
+      muatDaftarPasien();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.role]);
@@ -766,6 +855,32 @@ export default function BerandaDokterPage() {
 
   const mulaiAnalisis = async (file: File) => {
     setNamaFile(file.name);
+    
+    // ========================================
+    // STEP 1: Cek Model Aktif SEBELUM Upload
+    // ========================================
+    try {
+      const resModel = await fetch(`${URL_DASAR_API}/model/active`);
+      const dataModel = await resModel.json();
+      
+      if (dataModel.status !== "berhasil" || !dataModel.data) {
+        // Tidak ada model aktif - TAMPILKAN POPUP CUSTOM
+        setShowModalTidakAktif(true);
+        return; // STOP - jangan lanjut upload
+      }
+      
+      // Model aktif ditemukan - simpan info untuk display
+      setModelInfo(dataModel.data);
+      
+    } catch (error) {
+      console.error("Error checking active model:", error);
+      alert("Gagal mengecek status model AI. Pastikan backend berjalan.");
+      return;
+    }
+
+    // ========================================
+    // STEP 2: Model Aktif - Mulai Processing
+    // ========================================
     aturGambarUrl(URL.createObjectURL(file));
     setProgress(0);
     setPhase("processing");
@@ -787,16 +902,18 @@ export default function BerandaDokterPage() {
       const data = await response.json();
 
       // Simpan id analisis (untuk persist validasi ke backend nanti)
-      setAnalisisId(data.data?.id || "");
+      setAnalisisId(data.data?.id || data.data?._id || "");
 
       // Ekstrak hasil AI
-      const hasilAI = data.data?.analisis;
+      const hasilAI = data.data?.analisis_ai || data.data?.analisis;
 
       if (hasilAI && hasilAI.model_status === "loaded" && hasilAI.label) {
-        setPrediction({
+        const initialPrediction = {
           label: hasilAI.label as "Benign" | "Malignant",
           confidence: hasilAI.confidence_score ? hasilAI.confidence_score * 100 : parseFloat(hasilAI.confidence) || 0,
-        });
+        };
+        setPrediction(initialPrediction);
+        setPrediksiAsli(initialPrediction); // Save original AI prediction
         // Grad-CAM heatmap (prefix backend jika URL relatif dari local storage)
         const rawHeatmap: string = hasilAI.heatmap_url || "";
         setHeatmapUrl(
@@ -814,10 +931,9 @@ export default function BerandaDokterPage() {
             `Analisis gagal diproses: ${hasilAI.error || hasilAI.pesan || "kesalahan pada model"}`,
           );
         } else {
-          alert(
-            "Model AI belum aktif. Silakan aktifkan model di halaman Manajemen Model AI.",
-          );
+          setShowModalTidakAktif(true);
         }
+        setPhase("idle");
       }
 
     } catch (error) {
@@ -864,29 +980,16 @@ export default function BerandaDokterPage() {
   }, [phase]);
   
   const tanganiKoreksi = (koreksiLabel: "Benign" | "Malignant") => {
+    // Check if this is actually a correction (different from original AI prediction)
+    const isCorrection = prediksiAsli ? prediksiAsli.label !== koreksiLabel : false;
+    
     // Update prediction dengan koreksi dokter
     const updatedPrediction: Prediction = {
       label: koreksiLabel,
       confidence: 100, // Koreksi manual = 100% confidence
     };
     
-    // Simpan koreksi
-    try {
-      if (typeof window !== "undefined") {
-        const koreksi = {
-          namaFile,
-          prediksiAsli: prediction,
-          koreksiDokter: updatedPrediction,
-          waktu: new Date().toISOString(),
-        };
-        const existing = window.localStorage.getItem("mammoguard-koreksi");
-        const list = existing ? JSON.parse(existing) : [];
-        list.unshift(koreksi);
-        window.localStorage.setItem("mammoguard-koreksi", JSON.stringify(list));
-      }
-    } catch {
-      /* abaikan jika storage tidak tersedia */
-    }
+    setAdaKoreksi(isCorrection);
     
     // Terapkan koreksi ke tampilan prediksi dan TETAP di workspace
     // (jangan reset), agar dokter bisa lanjut mengatur BI-RADS & validasi.
@@ -895,6 +998,12 @@ export default function BerandaDokterPage() {
   };
 
   const tanganiValidasi = async () => {
+    // Validasi: jika ada koreksi, alasan harus diisi
+    if (adaKoreksi && alasanKoreksi.trim().length < 10) {
+      alert("Alasan koreksi wajib diisi minimal 10 karakter untuk compliance medikolegal.");
+      return;
+    }
+    
     // Persist validasi ke backend (menandai divalidasi + BI-RADS akhir)
     if (analisisId) {
       try {
@@ -905,21 +1014,28 @@ export default function BerandaDokterPage() {
             birads: biradsAkhir,
             label_final: prediction?.label,
             dokter: session?.nama,
+            alasan_koreksi: adaKoreksi ? alasanKoreksi : undefined,
+            sip_dokter: "SIP.DEMO/2026" // TODO: ambil dari session user
           }),
         });
         // Segarkan statistik (pending validasi berkurang)
         await muatStatistik();
+        await muatDaftarPasien();
       } catch (error) {
         console.error("Gagal menyimpan validasi:", error);
       }
     }
 
+    // Reset state
     setPhase("idle");
     setProgress(0);
     setNamaFile("");
     setAnalisisId("");
     aturGambarUrl("");
     setHeatmapUrl("");
+    setAdaKoreksi(false);
+    setAlasanKoreksi("");
+    setPrediksiAsli(null);
   };
 
   const tanganiLogout = () => {
@@ -932,17 +1048,102 @@ export default function BerandaDokterPage() {
   }
 
   return (
-    <main className="flex h-screen overflow-hidden bg-gradient-to-br from-[#f0f6fb] to-[#e6eef5] text-[#21303d]">
+    <>
+      {/* MODAL: Model AI Tidak Aktif */}
+      {showModalTidakAktif ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-[480px] rounded-[16px] bg-white p-8 shadow-2xl">
+            <div className="flex flex-col items-center gap-5 text-center">
+              {/* Icon */}
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#ff6b6b] to-[#c92a2a]">
+                <svg viewBox="0 0 24 24" fill="none" className="h-8 w-8 text-white" aria-hidden="true">
+                  <path
+                    d="M12 3.5L21.5 20H2.5L12 3.5Z"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M12 9V13" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                  <circle cx="12" cy="17" r="1.2" fill="currentColor" />
+                </svg>
+              </div>
+
+              {/* Title */}
+              <div>
+                <h3 className="text-[18px] font-bold text-[#1a2a3a]">
+                  Model AI Belum Diaktifkan
+                </h3>
+                <p className="mt-2 text-[13px] leading-relaxed text-[#6a7582]">
+                  Sistem analisis AI memerlukan model aktif untuk memproses gambar mammogram. 
+                  Saat ini belum ada model yang diaktifkan oleh Tim IT.
+                </p>
+              </div>
+
+              {/* Instructions */}
+              <div className="w-full rounded-[12px] border border-[#e0e6eb] bg-gradient-to-br from-[#f8fafc] to-[#f0f4f9] p-5 text-left">
+                <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[#8a95a1]">
+                  LANGKAH AKTIVASI MODEL:
+                </p>
+                <ol className="space-y-2 text-[12px] leading-relaxed text-[#5a6672]">
+                  <li className="flex gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0a5c4f] text-[10px] font-bold text-white">1</span>
+                    <span>Hubungi Tim IT untuk mengaktifkan model AI</span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0a5c4f] text-[10px] font-bold text-white">2</span>
+                    <span>Tim IT login dengan role &quot;Tim IT&quot;</span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0a5c4f] text-[10px] font-bold text-white">3</span>
+                    <span>Upload file model <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-[#c92a2a]">.pth</code> di menu &quot;Manajemen Model AI&quot;</span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0a5c4f] text-[10px] font-bold text-white">4</span>
+                    <span>Aktifkan model yang diinginkan (klik tombol &quot;Aktifkan&quot;)</span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0a5c4f] text-[10px] font-bold text-white">5</span>
+                    <span>Setelah model aktif, Anda dapat kembali melakukan analisis</span>
+                  </li>
+                </ol>
+              </div>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => setShowModalTidakAktif(false)}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[10px] bg-[#0a5c4f] text-[13px] font-semibold text-white shadow-md transition hover:bg-[#087765]"
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <main className="flex h-screen overflow-hidden bg-gradient-to-br from-[#f0f6fb] to-[#e6eef5] text-[#21303d]">
       <DokterSidebar session={session} onLogout={tanganiLogout} />
 
       <section className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden px-6 py-5">
-        <header className="shrink-0">
-          <h1 className="text-[20px] font-bold text-[#1a2a3a]">
-            Analisis Mammogram Baru
-          </h1>
-          <p className="mt-1 text-[11px] font-medium text-[#6a7582]">
-            Unggah citra mammogram untuk dianalisis oleh sistem AI
-          </p>
+        <header className="flex shrink-0 items-center justify-between">
+          <div>
+            <h1 className="text-[20px] font-bold text-[#1a2a3a]">
+              Analisis Mammogram Baru
+            </h1>
+            <p className="mt-1 text-[11px] font-medium text-[#6a7582]">
+              Unggah citra mammogram untuk dianalisis oleh sistem AI
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/profil-pasien")}
+            className="inline-flex h-11 items-center gap-2 rounded-[10px] bg-[#0a5c4f] px-5 text-[13px] font-semibold text-white shadow-md transition hover:bg-[#087765]"
+          >
+            <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+              <path d="M10 5V15M5 10H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            Tambah Pasien Baru
+          </button>
         </header>
 
         {phase === "idle" ? (
@@ -972,8 +1173,100 @@ export default function BerandaDokterPage() {
               })}
             </div>
 
-            <div className="mt-8 flex min-h-0 flex-1 items-center justify-center pb-4">
-              <IdleView onPilihFile={mulaiAnalisis} />
+            <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-hidden">
+              <div className="flex min-h-0 flex-1 overflow-hidden rounded-[14px] bg-white p-5 shadow-sm">
+                <div className="flex w-full flex-col overflow-hidden">
+                  <div className="mb-4 flex shrink-0 items-center justify-between border-b border-[#e0e6eb] pb-3">
+                    <h2 className="text-[14px] font-bold text-[#1a2a3a]">Pasien Terbaru</h2>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/riwayat-pasien")}
+                      className="text-[11px] font-semibold text-[#0a5c4f] hover:underline"
+                    >
+                      Lihat Semua →
+                    </button>
+                  </div>
+                  
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    {isLoadingPasien ? (
+                      <div className="flex h-32 items-center justify-center">
+                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#e0e6eb] border-t-[#0a5c4f]" />
+                      </div>
+                    ) : daftarPasien.length === 0 ? (
+                      <div className="flex h-32 items-center justify-center">
+                        <p className="text-[12px] text-[#8a95a1]">Belum ada data pasien</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {daftarPasien.map((pasien) => {
+                          const getMostSeriousStatus = () => {
+                            const kananMalignant = pasien.kanan?.prediksi === "Malignant";
+                            const kiriMalignant = pasien.kiri?.prediksi === "Malignant";
+                            
+                            if (kananMalignant || kiriMalignant) {
+                              return { label: "Malignant", color: "text-[#e22a39]", bg: "bg-[#fff1f3]" };
+                            }
+                            return { label: "Benign", color: "text-[#0a8a59]", bg: "bg-[#effaf5]" };
+                          };
+                          
+                          const status = getMostSeriousStatus();
+                          
+                          return (
+                            <div
+                              key={pasien.id}
+                              onClick={() => router.push(`/detail-pasien/${pasien.id_pasien}`)}
+                              className="flex cursor-pointer items-center justify-between rounded-[10px] border border-[#e0e6eb] bg-white p-4 transition hover:border-[#0a5c4f] hover:shadow-sm"
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#eef5f3] text-[#0a5c4f]">
+                                  <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+                                    <circle cx="12" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" />
+                                    <path
+                                      d="M6 19C6.5 16 8.5 14 12 14C15.5 14 17.5 16 18 19"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                    />
+                                  </svg>
+                                </div>
+                                <div>
+                                  <p className="text-[13px] font-bold text-[#1a2a3a]">{pasien.nama}</p>
+                                  <p className="text-[10px] font-mono text-[#8a95a1]">{pasien.id_pasien}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <p className={`text-[11px] font-bold ${status.color}`}>{status.label}</p>
+                                  <p className="text-[9px] text-[#8a95a1]">
+                                    {new Date(pasien.tanggal_pemeriksaan).toLocaleDateString("id-ID", {
+                                      day: "numeric",
+                                      month: "short",
+                                      year: "numeric",
+                                    })}
+                                  </p>
+                                </div>
+                                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 text-[#cfd8df]">
+                                  <path
+                                    d="M8 5L13 10L8 15"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="shrink-0">
+                <IdleView onPilihFile={mulaiAnalisis} />
+              </div>
             </div>
           </>
         ) : null}
@@ -993,10 +1286,12 @@ export default function BerandaDokterPage() {
               gambarUrl={gambarUrl}
               heatmapUrl={heatmapUrl}
               showKoreksiDropdown={showKoreksiDropdown}
+              alasanKoreksi={alasanKoreksi}
               onChangeBirads={setBiradsAkhir}
               onToggleKoreksi={() => setShowKoreksiDropdown(!showKoreksiDropdown)}
               onKoreksi={tanganiKoreksi}
               onValidasi={tanganiValidasi}
+              onChangeAlasanKoreksi={setAlasanKoreksi}
             />
           </div>
         ) : null}

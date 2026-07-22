@@ -89,14 +89,7 @@ export default function DokterSidebar({ session, onLogout }: DokterSidebarProps)
           </div>
         </div>
 
-        <div className="mt-5 flex w-full items-center gap-2.5 rounded-[10px] border-l-4 border-[#0a5c4f] bg-[#f0f8f5] px-3 py-3">
-          <MenuIcon iconKey="beranda" active />
-          <span className="text-[14px] font-semibold leading-[1.4] text-[#0a5c4f]">
-            Dokter Spesialis
-          </span>
-        </div>
-
-        <nav className="mt-4 space-y-2">
+        <nav className="mt-6 space-y-2">
           {menuItems.map((item) => {
             const active = pathname === item.href;
 

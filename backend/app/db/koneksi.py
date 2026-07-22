@@ -32,3 +32,18 @@ async def putuskan_database():
 def dapatkan_database():
     """Mendapatkan instance database untuk digunakan di endpoint"""
     return database
+
+
+def koleksi_analisis():
+    """Mendapatkan koleksi 'analisis' dari database"""
+    return database["analisis"]
+
+
+def koleksi_model():
+    """Mendapatkan koleksi 'model_ai' dari database"""
+    return database["model_ai"]
+
+
+def koleksi_pasien():
+    """Mendapatkan koleksi 'pasien' dari database"""
+    return database["pasien"]

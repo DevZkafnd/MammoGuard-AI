@@ -46,8 +46,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
       - mammoguard_storage:/app/storage
+      - ./backend/.env:/app/.env:ro
     networks:
       - mammoguard_network
     depends_on:

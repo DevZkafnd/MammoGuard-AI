@@ -1,0 +1,53 @@
+# Konfigurasi Database MongoDB
+MONGODB_URL=mongodb://admin_medis:password_lokal_123@localhost:27017
+NAMA_DATABASE=mammoguard_db
+
+# Konfigurasi Model AI
+JALUR_MODEL=./storage/models/ResNetDemo_1782708575_9063396e.pth
+
+# Konfigurasi Server
+HOST=0.0.0.0
+PORT=8000
+
+# Konfigurasi Autentikasi (JWT)
+JWT_SECRET=f7199b2e1ea4ffa72526ab5e34f40272b96694f08eae04b5167dfaf6ceb77269
+JWT_EXPIRE_MINUTES=480
+
+# ============================================
+# CLOUDFLARE R2 STORAGE CONFIGURATION
+# ============================================
+# Dapatkan dari: https://dash.cloudflare.com → R2 → Manage R2 API Tokens
+# Tutorial: https://developers.cloudflare.com/r2/api/s3/tokens/
+
+# Account ID (wajib)
+# Contoh: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p
+R2_ACCOUNT_ID=70fbc3602a2d15d2996102fbaaa12101
+
+# Access Key ID (wajib)
+# Contoh: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p
+R2_ACCESS_KEY_ID=0b662ec5e428bd680de5f7b12224fd13
+
+# Secret Access Key (wajib)
+# Contoh: abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567
+R2_SECRET_ACCESS_KEY=7a49bc7ea099906ef595d64fd88704ade3cdc98576d3a2a8887026ad04a00a23
+
+# Bucket Name
+# Default: mammoguard-storage
+R2_BUCKET_NAME=mammoguard-storage
+
+# Endpoint URL (auto-generated setelah buat bucket)
+# Format: https://<account_id>.r2.cloudflarestorage.com
+# Contoh: https://1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p.r2.cloudflarestorage.com
+R2_ENDPOINT_URL=https://70fbc3602a2d15d2996102fbaaa12101.r2.cloudflarestorage.com
+# Public URL (opsional, untuk akses publik)
+# Jika sudah setup custom domain atau R2.dev subdomain
+# Contoh: https://pub-xxxxxxxxxxxx.r2.dev
+R2_PUBLIC_URL=https://pub-473307c4f7a1457eb6c4787c346b4e79.r2.dev
+
+# ============================================
+# CATATAN PENTING:
+# ============================================
+# 1. Jangan commit file .env ke Git! (sudah ada di .gitignore)
+# 2. R2 GRATIS untuk 10GB storage + 1 juta operasi/bulan
+# 3. Jika R2_ACCOUNT_ID kosong, sistem akan pakai local storage
+# 4. Untuk production, WAJIB pakai R2 untuk scalability

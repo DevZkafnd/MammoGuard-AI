@@ -16,6 +16,7 @@ import os
 from app.routes.analisis import router_analisis
 from app.routes.model_management import router_model, muat_ulang_model_aktif_dari_db
 from app.routes.auth import router_auth, seed_pengguna
+from app.routes.pasien import router as router_pasien
 from app.db.koneksi import hubungkan_database, putuskan_database
 
 @asynccontextmanager
@@ -54,6 +55,7 @@ if os.path.exists("./storage"):
 aplikasi.include_router(router_auth)
 aplikasi.include_router(router_analisis)
 aplikasi.include_router(router_model)
+aplikasi.include_router(router_pasien)
 
 @aplikasi.get("/")
 async def halaman_utama():

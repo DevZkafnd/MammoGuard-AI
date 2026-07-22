@@ -510,29 +510,33 @@ export default function RiwayatPasienPage() {
   useEffect(() => {
     const fetchRiwayat = async () => {
       try {
-        const response = await fetch(`${URL_DASAR_API}/analisis/riwayat?limit=100`);
+        // Ambil dari koleksi PASIEN, bukan analisis
+        const response = await fetch(`${URL_DASAR_API}/pasien/?limit=100`);
         const data = await response.json();
         
         if (data.status === "berhasil" && Array.isArray(data.data)) {
-          // Transform data backend ke format frontend
+          // Transform data pasien ke format frontend
           const transformed: RiwayatPasien[] = data.data.map((item: any) => {
-            const hasilAnalisis = item.hasil_analisis || {};
-            const label = hasilAnalisis.label || "Unknown";
-            const confidence = hasilAnalisis.confidence_score 
-              ? Math.round(hasilAnalisis.confidence_score * 100) 
-              : 0;
+            // Ambil prediksi dari kanan atau kiri yang paling serious
+            const prediksiKanan = item.kanan?.prediksi || "Benign";
+            const prediksiKiri = item.kiri?.prediksi || "Benign";
+            const confidenceKanan = item.kanan?.confidence_score ? Math.round(item.kanan.confidence_score * 100) : 0;
+            const confidenceKiri = item.kiri?.confidence_score ? Math.round(item.kiri.confidence_score * 100) : 0;
             
-            // Tentukan status berdasarkan label AI
+            // Status: ambil yang paling serious (Malignant > Follow-up > Benign)
             let status: StatusLabel;
-            if (label === "Malignant") {
+            if (prediksiKanan === "Malignant" || prediksiKiri === "Malignant") {
               status = "Malignant";
-            } else if (label === "Benign") {
-              status = "Benign";
-            } else {
+            } else if (prediksiKanan === "Follow-up" || prediksiKiri === "Follow-up") {
               status = "Follow-up";
+            } else {
+              status = "Benign";
             }
             
-            // Tentukan BI-RADS berdasarkan status
+            // Confidence: ambil yang paling tinggi
+            const confidence = Math.max(confidenceKanan, confidenceKiri);
+            
+            // BI-RADS berdasarkan status
             let birads: Birads;
             if (status === "Malignant" && confidence > 90) {
               birads = "5";
@@ -547,9 +551,9 @@ export default function RiwayatPasienPage() {
             }
             
             return {
-              id: item._id || `PAT-${Date.now()}`,
-              nama: item.nama_berkas || "Unknown",
-              tanggal: new Date(item.waktu_unggah || Date.now()).toLocaleDateString("id-ID", {
+              id: item.id_pasien || item.id,
+              nama: item.nama || "Unknown Patient",
+              tanggal: new Date(item.tanggal_pemeriksaan || Date.now()).toLocaleDateString("id-ID", {
                 day: "numeric",
                 month: "short",
                 year: "numeric",
@@ -557,7 +561,7 @@ export default function RiwayatPasienPage() {
               status,
               birads,
               confidence,
-              catatan: `Hasil analisis AI model ${hasilAnalisis.model_info?.nama || 'default'}. Confidence score: ${confidence}%.`,
+              catatan: item.catatan || `Analisis bilateral: Kanan (${prediksiKanan}, ${confidenceKanan}%), Kiri (${prediksiKiri}, ${confidenceKiri}%)`,
             };
           });
           
