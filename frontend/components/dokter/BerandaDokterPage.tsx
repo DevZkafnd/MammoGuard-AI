@@ -1263,10 +1263,6 @@ export default function BerandaDokterPage() {
                   </div>
                 </div>
               </div>
-
-              <div className="shrink-0">
-                <IdleView onPilihFile={mulaiAnalisis} />
-              </div>
             </div>
           </>
         ) : null}
@@ -1297,5 +1293,6 @@ export default function BerandaDokterPage() {
         ) : null}
       </section>
     </main>
+    </>
   );
 }

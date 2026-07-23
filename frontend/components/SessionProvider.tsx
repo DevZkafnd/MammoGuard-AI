@@ -26,14 +26,13 @@ export default function SessionProvider({
       router.replace("/");
     }
     
-    // Jika ada session dan mencoba mengakses halaman login
+    // Jika ada session dan mencoba mengakses halaman login,
+    // arahkan sesuai peran (dokter -> beranda, admin/IT -> manajemen)
     if (session && pathname === "/") {
       const halamanTerakhir = ambilHalamanTerakhir();
-      if (halamanTerakhir) {
-        router.push(halamanTerakhir);
-      } else {
-        router.push("/user-manajemen");
-      }
+      const berandaPeran =
+        session.role === "dokter" ? "/beranda-dokter" : "/user-manajemen";
+      router.push(halamanTerakhir || berandaPeran);
     }
 
     // Perbarui session timeout saat user aktif

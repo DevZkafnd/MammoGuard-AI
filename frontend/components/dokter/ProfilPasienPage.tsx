@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DokterSidebar from "@/components/dokter/DokterSidebar";
 import {
@@ -49,6 +49,7 @@ export default function ProfilPasienPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentSide, setCurrentSide] = useState<SisiGambar>("kanan");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [notif, setNotif] = useState<{ tipe: "sukses" | "error"; pesan: string } | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -158,11 +159,16 @@ export default function ProfilPasienPage() {
         return;
       }
       
-      // Wait for progress to reach 100%
-      while (uploadProgress < 100) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // Upload + AI sudah selesai. Hentikan animasi progres, tampilkan 100%
+      // sebentar, lalu lanjut. JANGAN membaca state uploadProgress di loop
+      // (stale closure -> loop tak pernah berhenti / nyangkut di 100%).
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
       }
-      
+      setUploadProgress(100);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
       // Simpan URL untuk submit nanti
       if (sisi === "kanan") {
         setGambarKananUrl(gambarOriginalUrl);
@@ -227,29 +233,74 @@ export default function ProfilPasienPage() {
     };
   }, []);
 
-  const handleSubmit = async () => {
+  // Komposit citra original (object-contain) + goresan kuas, lalu unggah -> URL
+  const unggahAnotasi = async (
+    originalUrl: string | null,
+    brushDataUrl: string | null,
+  ): Promise<string | null> => {
+    if (!originalUrl || !brushDataUrl) return null;
     try {
+      const muat = (src: string) =>
+        new Promise<HTMLImageElement>((res, rej) => {
+          const i = new Image();
+          i.onload = () => res(i);
+          i.onerror = rej;
+          i.src = src;
+        });
+      const [orig, brush] = await Promise.all([muat(originalUrl), muat(brushDataUrl)]);
+      const c = document.createElement("canvas");
+      c.width = KANVAS_W;
+      c.height = KANVAS_H;
+      const ctx = c.getContext("2d")!;
+      ctx.fillStyle = "#0a0e1a";
+      ctx.fillRect(0, 0, KANVAS_W, KANVAS_H);
+      const s = Math.min(KANVAS_W / orig.width, KANVAS_H / orig.height);
+      const dw = orig.width * s;
+      const dh = orig.height * s;
+      ctx.drawImage(orig, (KANVAS_W - dw) / 2, (KANVAS_H - dh) / 2, dw, dh);
+      ctx.drawImage(brush, 0, 0, KANVAS_W, KANVAS_H);
+      const blob: Blob | null = await new Promise((res) => c.toBlob(res, "image/png"));
+      if (!blob) return null;
+      const fd = new FormData();
+      fd.append("berkas", new File([blob], "anotasi.png", { type: "image/png" }));
+      const r = await fetch(`${URL_DASAR_API}/analisis/unggah`, { method: "POST", body: fd });
+      if (!r.ok) return null;
+      const d = await r.json();
+      return d.data?.gambar_url || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleSubmit = async (koreksi: KoreksiData) => {
+    try {
+      // Unggah anotasi dokter (jika ada goresan) -> brush_url
+      const [brushKananUrl, brushKiriUrl] = await Promise.all([
+        unggahAnotasi(dataPasien.kanan.original, koreksi.kanan.brushDataUrl),
+        unggahAnotasi(dataPasien.kiri.original, koreksi.kiri.brushDataUrl),
+      ]);
+
       const payload = {
         nama: dataPasien.nama,
         id_pasien: dataPasien.id_pasien,
         kanan: {
           original_url: gambarKananUrl,
           gradcam_url: dataPasien.kanan.gradcam,
-          brush_url: null,
-          prediksi: prediksiKanan?.label || "Unknown",
+          brush_url: brushKananUrl,
+          prediksi: koreksi.kanan.label,
           confidence_score: prediksiKanan?.confidence ? prediksiKanan.confidence / 100 : 0,
-          bi_rads: "2",  // Default, bisa diupdate nanti
+          bi_rads: koreksi.kanan.birads,
         },
         kiri: {
           original_url: gambarKiriUrl,
           gradcam_url: dataPasien.kiri.gradcam,
-          brush_url: null,
-          prediksi: prediksiKiri?.label || "Unknown",
+          brush_url: brushKiriUrl,
+          prediksi: koreksi.kiri.label,
           confidence_score: prediksiKiri?.confidence ? prediksiKiri.confidence / 100 : 0,
-          bi_rads: "2",  // Default, bisa diupdate nanti
+          bi_rads: koreksi.kiri.birads,
         },
         dokter_id: session.username || "dokter",
-        catatan: `Analisis mammogram bilateral. Kanan: ${prediksiKanan?.label} (${prediksiKanan?.confidence.toFixed(1)}%), Kiri: ${prediksiKiri?.label} (${prediksiKiri?.confidence.toFixed(1)}%)`,
+        catatan: `Kanan: ${koreksi.kanan.label} (BI-RADS ${koreksi.kanan.birads}), Kiri: ${koreksi.kiri.label} (BI-RADS ${koreksi.kiri.birads}). Divalidasi dokter.`,
       };
 
       const response = await fetch(`${URL_DASAR_API}/pasien/`, {
@@ -265,23 +316,20 @@ export default function ProfilPasienPage() {
         throw new Error(error.detail || "Gagal menyimpan data pasien");
       }
 
-      const result = await response.json();
-      alert(`✓ Data pasien ${dataPasien.nama} berhasil disimpan!\nID: ${dataPasien.id_pasien}`);
-      
-      // Reset dan kembali ke dashboard
-      setDataPasien({
-        nama: "",
-        id_pasien: "",
-        kanan: { original: null, gradcam: null, brush: null },
-        kiri: { original: null, gradcam: null, brush: null },
+      await response.json();
+
+      // Notifikasi sukses dalam web, lalu redirect ke halaman detail pasien
+      const idPasien = dataPasien.id_pasien;
+      setNotif({
+        tipe: "sukses",
+        pesan: `Data pasien ${dataPasien.nama} berhasil disimpan. Mengalihkan ke detail pasien…`,
       });
-      setPrediksiKanan(null);
-      setPrediksiKiri(null);
-      setStep("input-nama");
-      router.push("/beranda-dokter");
+      setTimeout(() => {
+        router.push(`/detail-pasien/${idPasien}`);
+      }, 1300);
     } catch (error: any) {
       console.error("Error submit:", error);
-      alert(`Gagal menyimpan data pasien: ${error.message}`);
+      setNotif({ tipe: "error", pesan: `Gagal menyimpan data pasien: ${error.message}` });
     }
   };
 
@@ -298,6 +346,30 @@ export default function ProfilPasienPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f8fa]">
+      {/* Notifikasi in-app (toast) */}
+      {notif ? (
+        <div className="fixed left-1/2 top-6 z-50 -translate-x-1/2">
+          <div
+            className={`flex items-center gap-3 rounded-[12px] px-5 py-3.5 shadow-[0_12px_40px_rgba(15,30,45,0.25)] ${
+              notif.tipe === "sukses" ? "bg-[#0a5c4f] text-white" : "bg-[#e22a39] text-white"
+            }`}
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-[13px] font-bold">
+              {notif.tipe === "sukses" ? "✓" : "!"}
+            </span>
+            <p className="text-[13px] font-semibold">{notif.pesan}</p>
+            <button
+              type="button"
+              onClick={() => setNotif(null)}
+              className="ml-2 text-[18px] leading-none text-white/70 transition hover:text-white"
+              aria-label="Tutup notifikasi"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <DokterSidebar session={session} onLogout={handleLogout} />
       
       <main className="flex flex-1 flex-col overflow-hidden">
@@ -557,6 +629,248 @@ function UploadView({
   );
 }
 
+// Ukuran kanvas anotasi (resolusi tetap; zoom hanya mengubah tampilan CSS).
+const KANVAS_W = 440;
+const KANVAS_H = 560;
+const HIGHLIGHT_ALPHA = 0.25; // opacity mode Highlight (seragam, tanpa penumpukan)
+const WARNA_KUAS = ["#ff3d2e", "#ffd23d", "#3ba7ff", "#2ec16b"];
+const UKURAN_KUAS = [8, 16, 28];
+const OPSI_STATUS = ["Benign", "Malignant"] as const;
+const OPSI_BIRADS = ["0", "1", "2", "3", "4A", "4B", "4C", "5", "6"];
+
+type SisiKoreksi = {
+  label: "Benign" | "Malignant";
+  birads: string;
+  brushDataUrl: string | null;
+};
+type KoreksiData = { kanan: SisiKoreksi; kiri: SisiKoreksi };
+
+function biradsDefault(p: Prediction | null): string {
+  return p?.label === "Malignant" ? "4C" : "2";
+}
+
+/**
+ * Editor anotasi citra original: kuas highlight (beberapa warna & ukuran),
+ * zoom in/out, dan hapus. Menyimpan goresan sebagai PNG transparan via onChange.
+ */
+function BrushEditor({
+  imageUrl,
+  brushDataUrl,
+  onChange,
+}: {
+  imageUrl: string | null;
+  brushDataUrl: string | null;
+  onChange: (dataUrl: string | null) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const liveRef = useRef<HTMLCanvasElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const drawing = useRef(false);
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const pan = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [warna, setWarna] = useState(WARNA_KUAS[0]);
+  const [ukuran, setUkuran] = useState(UKURAN_KUAS[1]);
+  const [alat, setAlat] = useState<"kuas" | "geser">("kuas");
+  const [mode, setMode] = useState<"highlight" | "biasa">("highlight");
+
+  // Inisialisasi kanvas & pulihkan goresan tersimpan (saat pindah tab)
+  useEffect(() => {
+    const c = canvasRef.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (brushDataUrl) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, c.width, c.height);
+      img.src = brushDataUrl;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const koord = (e: ReactMouseEvent) => {
+    const c = liveRef.current!;
+    const r = c.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) * (c.width / r.width),
+      y: (e.clientY - r.top) * (c.height / r.height),
+    };
+  };
+
+  const mulai = (e: ReactMouseEvent) => {
+    if (alat === "geser") {
+      const s = scrollRef.current;
+      if (s) pan.current = { x: e.clientX, y: e.clientY, sl: s.scrollLeft, st: s.scrollTop };
+      return;
+    }
+    drawing.current = true;
+    last.current = koord(e);
+  };
+  const gerak = (e: ReactMouseEvent) => {
+    if (alat === "geser") {
+      if (!pan.current || !scrollRef.current) return;
+      scrollRef.current.scrollLeft = pan.current.sl - (e.clientX - pan.current.x);
+      scrollRef.current.scrollTop = pan.current.st - (e.clientY - pan.current.y);
+      return;
+    }
+    if (!drawing.current) return;
+    // Sapuan digambar di lapisan "live" pada opacity penuh; translusen diterapkan
+    // sekali saat commit (mencegah penumpukan warna di dalam satu sapuan).
+    const ctx = liveRef.current!.getContext("2d")!;
+    const p = koord(e);
+    ctx.strokeStyle = warna;
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = ukuran;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(last.current!.x, last.current!.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last.current = p;
+  };
+  const selesai = () => {
+    if (alat === "geser") {
+      pan.current = null;
+      return;
+    }
+    if (!drawing.current) return;
+    drawing.current = false;
+    last.current = null;
+    // Commit sapuan dari lapisan live ke kanvas utama dengan opacity sesuai mode
+    const main = canvasRef.current!;
+    const live = liveRef.current!;
+    const mctx = main.getContext("2d")!;
+    mctx.globalAlpha = mode === "highlight" ? HIGHLIGHT_ALPHA : 1;
+    mctx.drawImage(live, 0, 0);
+    mctx.globalAlpha = 1;
+    live.getContext("2d")!.clearRect(0, 0, live.width, live.height);
+    onChange(main.toDataURL("image/png"));
+  };
+  const hapus = () => {
+    const c = canvasRef.current!;
+    c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+    onChange(null);
+  };
+
+  return (
+    <div>
+      {/* Toolbar kuas */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {/* Alat: Kuas / Geser */}
+        <div className="flex overflow-hidden rounded-[6px] border-2 border-[#e0e6eb]">
+          <button
+            type="button"
+            onClick={() => setAlat("kuas")}
+            className={`px-2.5 py-1 text-[11px] font-bold transition ${alat === "kuas" ? "bg-[#0a5c4f] text-white" : "bg-white text-[#5a6672]"}`}
+          >
+            🖌️ Kuas
+          </button>
+          <button
+            type="button"
+            onClick={() => setAlat("geser")}
+            className={`px-2.5 py-1 text-[11px] font-bold transition ${alat === "geser" ? "bg-[#0a5c4f] text-white" : "bg-white text-[#5a6672]"}`}
+          >
+            ✋ Geser
+          </button>
+        </div>
+
+        {/* Jenis kuas: Highlight / Biasa */}
+        <div className={`flex overflow-hidden rounded-[6px] border-2 border-[#e0e6eb] ${alat === "geser" ? "pointer-events-none opacity-40" : ""}`}>
+          <button
+            type="button"
+            onClick={() => setMode("highlight")}
+            className={`px-2.5 py-1 text-[11px] font-bold transition ${mode === "highlight" ? "bg-[#0a5c4f] text-white" : "bg-white text-[#5a6672]"}`}
+          >
+            Highlight
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("biasa")}
+            className={`px-2.5 py-1 text-[11px] font-bold transition ${mode === "biasa" ? "bg-[#0a5c4f] text-white" : "bg-white text-[#5a6672]"}`}
+          >
+            Biasa
+          </button>
+        </div>
+
+        <span className="text-[10px] font-bold uppercase tracking-wide text-[#8a95a1]">Warna</span>
+        {WARNA_KUAS.map((w) => (
+          <button
+            key={w}
+            type="button"
+            onClick={() => setWarna(w)}
+            className={`h-6 w-6 rounded-full border-2 transition ${warna === w ? "border-[#1a2a3a] scale-110" : "border-white"}`}
+            style={{ backgroundColor: w }}
+            aria-label={`Warna ${w}`}
+          />
+        ))}
+        <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-[#8a95a1]">Tebal</span>
+        {UKURAN_KUAS.map((u, i) => (
+          <button
+            key={u}
+            type="button"
+            onClick={() => setUkuran(u)}
+            className={`flex h-7 w-7 items-center justify-center rounded-[6px] border-2 text-[10px] font-bold transition ${ukuran === u ? "border-[#0a5c4f] bg-[#0a5c4f] text-white" : "border-[#e0e6eb] bg-white text-[#5a6672]"}`}
+          >
+            {["S", "M", "L"][i]}
+          </button>
+        ))}
+        <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-[#8a95a1]">Zoom</span>
+        <button type="button" onClick={() => setZoom((z) => Math.max(1, Math.round((z - 0.25) * 100) / 100))} className="flex h-7 w-7 items-center justify-center rounded-[6px] border-2 border-[#e0e6eb] bg-white text-[14px] font-bold text-[#5a6672]">−</button>
+        <span className="w-10 text-center text-[11px] font-semibold tabular-nums text-[#5a6672]">{Math.round(zoom * 100)}%</span>
+        <button type="button" onClick={() => setZoom((z) => Math.min(4, Math.round((z + 0.25) * 100) / 100))} className="flex h-7 w-7 items-center justify-center rounded-[6px] border-2 border-[#e0e6eb] bg-white text-[14px] font-bold text-[#5a6672]">+</button>
+        <button type="button" onClick={() => setZoom(1)} className="rounded-[6px] border-2 border-[#e0e6eb] bg-white px-2 py-1 text-[10px] font-bold text-[#5a6672]">Reset</button>
+        <button type="button" onClick={hapus} className="ml-auto rounded-[6px] border-2 border-[#f3d5da] bg-[#fff1f3] px-3 py-1 text-[10px] font-bold text-[#e06873]">Hapus Anotasi</button>
+      </div>
+
+      {/* Area gambar + kanvas (scroll saat zoom) */}
+      <div ref={scrollRef} className="overflow-auto rounded-[8px] border-2 border-[#e0e6eb] bg-[#0a0e1a]" style={{ height: KANVAS_H }}>
+        <div className="relative" style={{ width: KANVAS_W * zoom, height: KANVAS_H * zoom }}>
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt="Citra original"
+              draggable={false}
+              className="absolute inset-0 h-full w-full select-none object-contain"
+            />
+          ) : null}
+          {/* Kanvas utama: sapuan yang sudah di-commit (read-only) */}
+          <canvas
+            ref={canvasRef}
+            width={KANVAS_W}
+            height={KANVAS_H}
+            style={{ width: KANVAS_W * zoom, height: KANVAS_H * zoom }}
+            className="pointer-events-none absolute inset-0"
+          />
+          {/* Lapisan live: sapuan berjalan (preview), opacity mengikuti mode */}
+          <canvas
+            ref={liveRef}
+            width={KANVAS_W}
+            height={KANVAS_H}
+            onMouseDown={mulai}
+            onMouseMove={gerak}
+            onMouseUp={selesai}
+            onMouseLeave={selesai}
+            style={{
+              width: KANVAS_W * zoom,
+              height: KANVAS_H * zoom,
+              cursor: alat === "geser" ? "grab" : "crosshair",
+              opacity: mode === "highlight" ? HIGHLIGHT_ALPHA : 1,
+            }}
+            className="absolute inset-0 touch-none"
+          />
+        </div>
+      </div>
+      <p className="mt-1.5 text-[10px] text-[#8a95a1]">
+        {alat === "geser"
+          ? "Mode Geser: klik & seret untuk menggeser gambar (gunakan saat di-zoom)."
+          : `Mode ${mode === "highlight" ? "Highlight" : "Kuas Biasa"}: klik & seret pada citra untuk menandai area.`}
+      </p>
+    </div>
+  );
+}
+
 function VerifikasiView({
   dataPasien,
   prediksiKanan,
@@ -567,17 +881,38 @@ function VerifikasiView({
   dataPasien: DataPasien;
   prediksiKanan: Prediction | null;
   prediksiKiri: Prediction | null;
-  onSubmit: () => void;
+  onSubmit: (koreksi: KoreksiData) => void;
   onBack: () => void;
 }) {
+  const [sisiAktif, setSisiAktif] = useState<"kanan" | "kiri">("kanan");
+  const [koreksi, setKoreksi] = useState<KoreksiData>(() => ({
+    kanan: {
+      label: (prediksiKanan?.label as "Benign" | "Malignant") || "Benign",
+      birads: biradsDefault(prediksiKanan),
+      brushDataUrl: null,
+    },
+    kiri: {
+      label: (prediksiKiri?.label as "Benign" | "Malignant") || "Benign",
+      birads: biradsDefault(prediksiKiri),
+      brushDataUrl: null,
+    },
+  }));
+
+  const perbarui = (patch: Partial<SisiKoreksi>) =>
+    setKoreksi((prev) => ({ ...prev, [sisiAktif]: { ...prev[sisiAktif], ...patch } }));
+
+  const dataSisi = dataPasien[sisiAktif];
+  const prediksiSisi = sisiAktif === "kanan" ? prediksiKanan : prediksiKiri;
+  const nilai = koreksi[sisiAktif];
+  const isMalignant = nilai.label === "Malignant";
+
   return (
     <div className="mx-auto max-w-[1200px]">
       <div className="mb-6 rounded-[16px] bg-white p-6 shadow-md">
-        <h2 className="text-[18px] font-bold text-[#1a2a3a]">
-          Verifikasi Data Pasien
-        </h2>
+        <h2 className="text-[18px] font-bold text-[#1a2a3a]">Verifikasi &amp; Anotasi</h2>
         <p className="mt-1 text-[12px] text-[#8a95a1]">
-          Periksa kembali semua data sebelum menyimpan ke sistem
+          Bandingkan tebakan AI (Grad-CAM) dengan citra asli. Anotasi area pada citra original,
+          lalu koreksi klasifikasi bila perlu.
         </p>
       </div>
 
@@ -595,19 +930,104 @@ function VerifikasiView({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        <HasilAnalisisCard
-          sisi="Kanan"
-          gambarOriginal={dataPasien.kanan.original}
-          gambarGradcam={dataPasien.kanan.gradcam}
-          prediksi={prediksiKanan}
-        />
-        <HasilAnalisisCard
-          sisi="Kiri"
-          gambarOriginal={dataPasien.kiri.original}
-          gambarGradcam={dataPasien.kiri.gradcam}
-          prediksi={prediksiKiri}
-        />
+      {/* Tab pilih sisi */}
+      <div className="mb-4 flex gap-2">
+        {([
+          { key: "kanan", label: "Mammogram Kanan", pred: koreksi.kanan },
+          { key: "kiri", label: "Mammogram Kiri", pred: koreksi.kiri },
+        ] as const).map((t) => {
+          const aktif = sisiAktif === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setSisiAktif(t.key)}
+              className={`flex items-center gap-2 rounded-[10px] border-2 px-5 py-2.5 text-[13px] font-bold transition ${
+                aktif ? "border-[#0a5c4f] bg-[#0a5c4f] text-white shadow-sm" : "border-[#e0e6eb] bg-white text-[#5a6672] hover:bg-[#f8fafc]"
+              }`}
+            >
+              {t.label}
+              <span className={`h-2 w-2 rounded-full ${t.pred.label === "Malignant" ? "bg-[#e22a39]" : "bg-[#0a8a59]"}`} />
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Kartu editor: kiri = AI/Grad-CAM (referensi), kanan = original (anotasi) */}
+      <div className="rounded-[12px] bg-white p-6 shadow-md">
+        <div className="grid grid-cols-2 gap-5">
+          {/* KIRI: Hasil AI + Grad-CAM (read-only) */}
+          <div>
+            <h3 className="text-[13px] font-bold text-[#1a2a3a]">Hasil AI (Grad-CAM)</h3>
+            <p className="mb-2 text-[10px] text-[#8a95a1]">Referensi tebakan model — tidak dapat diedit</p>
+            <div className="overflow-hidden rounded-[8px] border-2 border-[#e0e6eb] bg-[#0a0e1a]" style={{ height: KANVAS_H }}>
+              {dataSisi.gradcam ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={dataSisi.gradcam} alt="Grad-CAM" className="h-full w-full object-contain" />
+              ) : (
+                <div className="flex h-full items-center justify-center text-[11px] text-[#5a6672]">No Heatmap</div>
+              )}
+            </div>
+            {prediksiSisi ? (
+              <p className="mt-2 text-[11px] font-semibold text-[#5a6672]">
+                Prediksi AI:{" "}
+                <span className={prediksiSisi.label === "Malignant" ? "text-[#e22a39]" : "text-[#0a8a59]"}>
+                  {prediksiSisi.label} ({prediksiSisi.confidence.toFixed(1)}%)
+                </span>
+              </p>
+            ) : null}
+          </div>
+
+          {/* KANAN: Citra original + editor kuas */}
+          <div>
+            <h3 className="text-[13px] font-bold text-[#1a2a3a]">Citra Original (Anotasi Dokter)</h3>
+            <p className="mb-2 text-[10px] text-[#8a95a1]">Tandai area temuan dengan kuas highlight</p>
+            <BrushEditor
+              key={sisiAktif}
+              imageUrl={dataSisi.original}
+              brushDataUrl={nilai.brushDataUrl}
+              onChange={(url) => perbarui({ brushDataUrl: url })}
+            />
+          </div>
+        </div>
+
+        {/* Koreksi klasifikasi */}
+        <div
+          className={`mt-5 grid grid-cols-2 gap-4 rounded-[10px] border-2 p-4 ${
+            isMalignant ? "border-[#f4c0c8] bg-[#fff6f7]" : "border-[#c5e8d8] bg-[#f2fbf7]"
+          }`}
+        >
+          <label className="block">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-[#8a95a1]">Klasifikasi (Status)</span>
+            <select
+              value={nilai.label}
+              onChange={(e) => perbarui({ label: e.target.value as "Benign" | "Malignant" })}
+              className={`mt-1 h-11 w-full rounded-[8px] border-2 bg-white px-3 text-[14px] font-bold outline-none ${
+                isMalignant ? "border-[#e22a39] text-[#e22a39]" : "border-[#0a8a59] text-[#0a8a59]"
+              }`}
+            >
+              {OPSI_STATUS.map((s) => (
+                <option key={s} value={s}>
+                  {s} {s === "Malignant" ? "(Ganas)" : "(Jinak)"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-[#8a95a1]">Kategori BI-RADS</span>
+            <select
+              value={nilai.birads}
+              onChange={(e) => perbarui({ birads: e.target.value })}
+              className="mt-1 h-11 w-full rounded-[8px] border-2 border-[#0a5c4f] bg-white px-3 text-[14px] font-bold text-[#1a2a3a] outline-none"
+            >
+              {OPSI_BIRADS.map((b) => (
+                <option key={b} value={b}>
+                  BI-RADS {b}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="mt-6 flex justify-between">
@@ -617,90 +1037,22 @@ function VerifikasiView({
         >
           ← Kembali
         </button>
-        <button
-          onClick={onSubmit}
-          className="rounded-[8px] bg-[#0a5c4f] px-8 py-3 text-[13px] font-semibold text-white transition hover:bg-[#087765]"
-        >
-          ✓ Simpan ke Riwayat Pasien
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function HasilAnalisisCard({
-  sisi,
-  gambarOriginal,
-  gambarGradcam,
-  prediksi,
-}: {
-  sisi: string;
-  gambarOriginal: string | null;
-  gambarGradcam: string | null;
-  prediksi: Prediction | null;
-}) {
-  const isMalignant = prediksi?.label === "Malignant";
-
-  return (
-    <div className="rounded-[12px] bg-white p-6 shadow-md">
-      <h3 className="text-[14px] font-bold text-[#1a2a3a]">
-        Mammogram {sisi}
-      </h3>
-
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className="aspect-square overflow-hidden rounded-[8px] border-2 border-[#e0e6eb] bg-[#0a0e1a]">
-          {gambarOriginal ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={gambarOriginal}
-              alt={`Mammogram ${sisi} Original`}
-              className="h-full w-full object-contain"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-[11px] text-[#5a6672]">
-              No Image
-            </div>
-          )}
-        </div>
-        <div className="aspect-square overflow-hidden rounded-[8px] border-2 border-[#e0e6eb] bg-[#0a0e1a]">
-          {gambarGradcam ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={gambarGradcam}
-              alt={`Grad-CAM ${sisi}`}
-              className="h-full w-full object-contain"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-[11px] text-[#5a6672]">
-              No Heatmap
-            </div>
-          )}
-        </div>
-      </div>
-
-      {prediksi && (
-        <div
-          className={`mt-4 rounded-[8px] border-2 p-4 ${
-            isMalignant
-              ? "border-[#f4c0c8] bg-gradient-to-r from-[#fff1f3] to-[#ffe8eb]"
-              : "border-[#c5e8d8] bg-gradient-to-r from-[#effaf5] to-[#e6f7f0]"
-          }`}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#8a95a1]">
-            Hasil Analisis AI
-          </p>
-          <p
-            className={`mt-1 text-[16px] font-bold ${
-              isMalignant ? "text-[#e22a39]" : "text-[#0a8a59]"
-            }`}
+        {sisiAktif === "kanan" ? (
+          <button
+            onClick={() => setSisiAktif("kiri")}
+            className="rounded-[8px] bg-[#0a5c4f] px-8 py-3 text-[13px] font-semibold text-white transition hover:bg-[#087765]"
           >
-            {prediksi.label} {isMalignant ? "(Ganas)" : "(Jinak)"}
-          </p>
-          <p className="mt-1 text-[11px] font-semibold text-[#5a6672]">
-            Confidence: {prediksi.confidence.toFixed(1)}%
-          </p>
-        </div>
-      )}
+            Lihat Kiri →
+          </button>
+        ) : (
+          <button
+            onClick={() => onSubmit(koreksi)}
+            className="rounded-[8px] bg-[#0a5c4f] px-8 py-3 text-[13px] font-semibold text-white transition hover:bg-[#087765]"
+          >
+            ✓ Simpan ke Riwayat Pasien
+          </button>
+        )}
+      </div>
     </div>
   );
 }

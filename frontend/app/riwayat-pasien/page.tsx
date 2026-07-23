@@ -504,7 +504,6 @@ export default function RiwayatPasienPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [kataKunci, setKataKunci] = useState("");
   const [filterAktif, setFilterAktif] = useState<FilterKey>("semua");
-  const [itemDetail, setItemDetail] = useState<RiwayatPasien | null>(null);
   
   // Fetch data dari backend
   useEffect(() => {
@@ -813,7 +812,7 @@ export default function RiwayatPasienPage() {
                   <td className="px-5 py-3.5">
                     <button
                       type="button"
-                      onClick={() => setItemDetail(item)}
+                      onClick={() => router.push(`/detail-pasien/${item.id}`)}
                       className="inline-flex items-center gap-1.5 rounded-[8px] border border-[#92e0c4] bg-gradient-to-r from-[#effaf5] to-[#e6f7f0] px-3 py-1.5 text-[11px] font-bold text-[#0a8a59] transition hover:shadow-sm"
                     >
                       <EyeIcon />
@@ -838,13 +837,6 @@ export default function RiwayatPasienPage() {
         </div>
       </section>
 
-      {itemDetail ? (
-        <DetailModal
-          item={itemDetail}
-          onClose={() => setItemDetail(null)}
-          onUnduhPdf={tanganiUnduhPdfPasien}
-        />
-      ) : null}
     </main>
   );
 }

@@ -7,6 +7,7 @@ import contextlib
 import torch
 import torchvision.transforms as transforms
 from typing import Optional
+from PIL import Image
 
 class PemuatModel:
     """Kelas untuk memuat dan mengelola model PyTorch"""
@@ -77,24 +78,53 @@ class PemuatModel:
             
         return hasil
 
+def terapkan_clahe(citra_pil, clip_limit=2.0, tile_grid=(8, 8)):
+    """
+    Menerapkan CLAHE (Contrast Limited Adaptive Histogram Equalization) untuk
+    memperjelas kontras lokal pada citra mammogram.
+
+    Diterapkan pada versi grayscale, lalu dikembalikan sebagai RGB 3-channel
+    (model memakai input 3-channel). Jika OpenCV/CLAHE gagal, kembalikan citra
+    RGB apa adanya agar pipeline tetap jalan.
+    """
+    try:
+        import cv2
+        import numpy as np
+
+        gray = np.array(citra_pil.convert("L"))
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid)
+        hasil = clahe.apply(gray)
+        rgb = cv2.cvtColor(hasil, cv2.COLOR_GRAY2RGB)
+        return Image.fromarray(rgb)
+    except Exception as e:
+        print(f"⚠ CLAHE gagal, memakai citra asli: {e}")
+        return citra_pil.convert("RGB")
+
+
 def preprocessing_citra(citra_pil, ukuran_target=(224, 224)):
     """
-    Melakukan preprocessing pada citra untuk input model
-    
+    Preprocessing citra untuk input model:
+    1) CLAHE (peningkatan kontras lokal)
+    2) Resize ke 224x224
+    3) ToTensor
+    4) Normalisasi (ImageNet)
+
     Args:
         citra_pil: Objek PIL Image
         ukuran_target: Ukuran target untuk resize
-        
+
     Returns:
-        Tensor yang siap untuk input model
+        Tensor (1, 3, 224, 224) siap untuk input model
     """
+    citra_clahe = terapkan_clahe(citra_pil)
+
     transformasi = transforms.Compose([
         transforms.Resize(ukuran_target),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    
-    tensor = transformasi(citra_pil)
+
+    tensor = transformasi(citra_clahe)
     tensor = tensor.unsqueeze(0)  # Tambah dimensi batch
-    
+
     return tensor
